@@ -1,0 +1,1026 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
+  import API from "$lib/api/api.js";
+
+  interface Sport {
+    id: number;
+    title: string;
+    sport_id?: number;
+    position?: number;
+    created_at: string;
+    updated_at?: string;
+  }
+
+  interface Story {
+    id: number;
+    title: string;
+    summary?: string;
+    body?: string;
+    sport_id: number;
+    created_at: string;
+    updated_at?: string;
+  }
+
+  interface Figure {
+    id: number;
+    title: string;
+    summary?: string;
+    sport_id: number;
+    position?: number;
+    created_at: string;
+    updated_at?: string;
+  }
+
+  interface SportRule {
+    id: number;
+    title: string;
+    summary?: string;
+    body?: string;
+    sport_id: number;
+    created_at: string;
+    updated_at?: string;
+  }
+
+  interface Event {
+    id: number;
+    title: string;
+    date: string;
+    eventable_type: string;
+    eventable_id: number;
+    created_at: string;
+    updated_at: string;
+  }
+
+  let sport: Sport | null = null;
+  let stories: Story[] = [];
+  let figures: Figure[] = [];
+  let sportRules: SportRule[] = [];
+  let events: Event[] = [];
+  let loading = true;
+  let storiesLoading = false;
+  let figuresLoading = false;
+  let rulesLoading = false;
+  let eventsLoading = false;
+  let generatingEvent = false;
+  let error: string | null = null;
+
+  // Cover image states
+  let storyCoverImages: Record<number, string> = {};
+  let figureCoverImages: Record<number, string> = {};
+  let eventCoverImages: Record<number, string> = {};
+  let ruleCoverImages: Record<number, string> = {};
+
+  async function loadSport() {
+    loading = true;
+    error = null;
+    try {
+      sport = await API.get(`/sports/${$page.params.id}`);
+    } catch (err) {
+      error = "Failed to load sport";
+      console.error(err);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function loadStories() {
+    if (!sport) return;
+
+    storiesLoading = true;
+    try {
+      stories = await API.get(`/sports/${sport.id}/stories`);
+    } catch (err) {
+      console.error("Failed to load stories:", err);
+      stories = [];
+    } finally {
+      storiesLoading = false;
+    }
+  }
+
+  async function loadFigures() {
+    if (!sport) return;
+
+    figuresLoading = true;
+    try {
+      figures = await API.get(`/sports/${sport.id}/figures`);
+    } catch (err) {
+      console.error("Failed to load figures:", err);
+      figures = [];
+    } finally {
+      figuresLoading = false;
+    }
+  }
+
+  async function loadSportRules() {
+    if (!sport) return;
+
+    rulesLoading = true;
+    try {
+      sportRules = await API.get(`/sports/${sport.id}/sport_rules`);
+    } catch (err) {
+      console.error("Error fetching sport rules:", err);
+    } finally {
+      rulesLoading = false;
+    }
+  }
+
+  async function fetchEvents() {
+    if (!sport) return;
+    eventsLoading = true;
+    try {
+      events = await API.get(`/sports/${sport.id}/events`);
+    } catch (err) {
+      console.error("Error fetching events:", err);
+    } finally {
+      eventsLoading = false;
+    }
+  }
+
+  async function generateEvent() {
+    if (!sport) return;
+    generatingEvent = true;
+    try {
+      const result = await API.post(`/sports/${sport.id}/generate_events`);
+      // Add the new event to the list
+      events = [result.event, ...events];
+    } catch (err) {
+      console.error("Error generating event:", err);
+      error = "Error generating event";
+    } finally {
+      generatingEvent = false;
+    }
+  }
+
+  // Drag and drop functions
+  function handleDragOver(event: DragEvent) {
+    event.preventDefault();
+    (event.currentTarget as HTMLElement)?.classList.add("drag-over");
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    (event.currentTarget as HTMLElement)?.classList.remove("drag-over");
+  }
+
+  function handleDrop(
+    event: DragEvent,
+    type: string,
+    id: number,
+    title: string
+  ) {
+    event.preventDefault();
+    (event.currentTarget as HTMLElement)?.classList.remove("drag-over");
+
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      console.log(`Dropped file(s) for ${type} ID ${id} - "${title}":`, files);
+
+      // Get the first image file
+      const file = files[0];
+      if (file && file.type.startsWith("image/")) {
+        const imageUrl = URL.createObjectURL(file);
+
+        // Update the appropriate cover image state
+        switch (type) {
+          case "story":
+            storyCoverImages[id] = imageUrl;
+            storyCoverImages = { ...storyCoverImages }; // Trigger reactivity
+            break;
+          case "figure":
+            figureCoverImages[id] = imageUrl;
+            figureCoverImages = { ...figureCoverImages }; // Trigger reactivity
+            // Send image to API for figures
+            uploadFigureImage(id, file);
+            break;
+          case "event":
+            eventCoverImages[id] = imageUrl;
+            eventCoverImages = { ...eventCoverImages }; // Trigger reactivity
+            break;
+          case "sport_rule":
+            ruleCoverImages[id] = imageUrl;
+            ruleCoverImages = { ...ruleCoverImages }; // Trigger reactivity
+            break;
+        }
+      }
+    }
+  }
+
+  async function uploadFigureImage(figureId: number, file: File) {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const result = await API.post(
+        `/figures/${figureId}/upload_picture`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+      console.log("Image uploaded successfully:", result);
+    } catch (err) {
+      console.error("Error uploading image:", err);
+      error = "Error uploading image";
+    }
+  }
+
+  function handleStoryDrop(event: DragEvent, storyId: number, title: string) {
+    handleDrop(event, "story", storyId, title);
+  }
+
+  function handleFigureDrop(event: DragEvent, figureId: number, title: string) {
+    handleDrop(event, "figure", figureId, title);
+  }
+
+  function handleEventDrop(event: DragEvent, eventId: number, title: string) {
+    handleDrop(event, "event", eventId, title);
+  }
+
+  function handleRuleDrop(event: DragEvent, ruleId: number, title: string) {
+    handleDrop(event, "sport_rule", ruleId, title);
+  }
+
+  function goBack() {
+    goto("/");
+  }
+
+  // Reactive statement to load stories and figures when sport changes
+  $: if (sport) {
+    loadStories();
+    loadFigures();
+    loadSportRules();
+    fetchEvents();
+  }
+
+  onMount(async () => {
+    try {
+      sport = await API.get(`/sports/${$page.params.id}`);
+      await Promise.all([
+        loadStories(),
+        loadFigures(),
+        loadSportRules(),
+        fetchEvents(),
+      ]);
+    } catch (err) {
+      console.error("Error fetching sport:", err);
+      error = "Error loading sport";
+    } finally {
+      loading = false;
+    }
+  });
+</script>
+
+<svelte:head>
+  <title>{sport?.title || "Sport"} - ScoreFeel</title>
+</svelte:head>
+
+<div class="sport-page">
+  <header class="page-header">
+    <button class="back-btn" on:click={goBack}> ← Back to Home </button>
+    <h1>{sport?.title}</h1>
+  </header>
+
+  {#if loading}
+    <div class="loading">Loading sport information...</div>
+  {:else if error}
+    <div class="error">{error}</div>
+  {:else if sport}
+    <div class="sport-content">
+      <div class="sport-header">
+        <div class="sport-meta">
+          <span class="meta-item">
+            <strong>Sport ID:</strong>
+            {sport.id}
+          </span>
+          <div class="meta-item">
+            <span class="meta-label">Created:</span>
+            <span class="meta-value"
+              >{new Date(sport.created_at).toLocaleDateString()}</span
+            >
+          </div>
+          {#if sport.updated_at}
+            <div class="meta-item">
+              <span class="meta-label">Updated:</span>
+              <span class="meta-value"
+                >{new Date(sport.updated_at).toLocaleDateString()}</span
+              >
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Generate Events Button -->
+      <div class="action-section">
+        <button
+          class="generate-btn"
+          on:click={generateEvent}
+          disabled={generatingEvent}
+        >
+          {#if generatingEvent}
+            <span class="loading-spinner"></span>
+            Generating Event...
+          {:else}
+            ⚡ Generate Event
+          {/if}
+        </button>
+      </div>
+
+      <!-- Events Section -->
+      <section class="content-section">
+        <h2>Upcoming Events</h2>
+        {#if eventsLoading}
+          <div class="loading">Loading events...</div>
+        {:else if events.length > 0}
+          <div class="events-grid">
+            {#each events as event}
+              <div
+                class="event-card"
+                on:dragover={handleDragOver}
+                on:dragleave={handleDragLeave}
+                on:drop={(e) => handleEventDrop(e, event.id, event.title)}
+              >
+                {#if eventCoverImages[event.id]}
+                  <div class="card-image">
+                    <img src={eventCoverImages[event.id]} alt={event.title} />
+                  </div>
+                {/if}
+                <div class="event-header">
+                  <h3>{event.title}</h3>
+                  <span class="event-date"
+                    >{new Date(event.date).toLocaleDateString()}</span
+                  >
+                </div>
+                <div class="event-meta">
+                  <span class="event-id">ID: {event.id}</span>
+                  <span class="event-type">{event.eventable_type}</span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="no-content">No upcoming events found.</p>
+        {/if}
+      </section>
+
+      <div class="sport-sections">
+        <div class="section">
+          <h3>Latest Stories</h3>
+          {#if storiesLoading}
+            <div class="loading">Loading stories...</div>
+          {:else if stories.length > 0}
+            <div class="stories-grid">
+              {#each stories as story (story.id)}
+                <a
+                  href="/stories/{story.id}"
+                  class="story-card"
+                  on:dragover={handleDragOver}
+                  on:dragleave={handleDragLeave}
+                  on:drop={(e) => handleStoryDrop(e, story.id, story.title)}
+                >
+                  <div class="card-image">
+                    <img
+                      src={storyCoverImages[story.id] ||
+                        `https://placehold.co/600x400/1a1a1a/ffffff?text=${story.title.split(" ").join("+")}`}
+                      alt={story.title}
+                    />
+                  </div>
+                  <div class="card-content">
+                    <h4 class="story-title">{story.title}</h4>
+                    {#if story.summary}
+                      <p class="story-summary">{story.summary}</p>
+                    {/if}
+                    <div class="story-meta">
+                      <span class="story-date">
+                        {new Date(story.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              {/each}
+            </div>
+          {:else}
+            <p>No stories available yet for {sport.title}.</p>
+          {/if}
+        </div>
+
+        <div class="section">
+          <h3>Sport Figures</h3>
+          {#if figuresLoading}
+            <div class="loading">Loading figures...</div>
+          {:else if figures.length > 0}
+            <div class="figures-grid">
+              {#each figures as figure (figure.id)}
+                <a
+                  href="/figures/{figure.id}"
+                  class="figure-card"
+                  on:dragover={handleDragOver}
+                  on:dragleave={handleDragLeave}
+                  on:drop={(e) => handleFigureDrop(e, figure.id, figure.title)}
+                >
+                  <div class="card-image">
+                    <img
+                      src={figure.pictures?.find((p) => p.cover)?.image_url ||
+                        `https://placehold.co/600x400/1a1a1a/ffffff?text=${figure.title.split(" ").join("+")}`}
+                      alt={figure.title}
+                    />
+                  </div>
+                  <div class="card-content">
+                    <h4 class="figure-title">{figure.title}</h4>
+                    {#if figure.summary}
+                      <p class="figure-summary">{figure.summary}</p>
+                    {/if}
+                    <div class="figure-meta">
+                      <span class="figure-position">
+                        Position: {figure.position || "Not set"}
+                      </span>
+                      <span class="figure-date">
+                        {new Date(figure.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              {/each}
+            </div>
+          {:else}
+            <p>No figures available yet for {sport.title}.</p>
+          {/if}
+        </div>
+
+        <div class="section">
+          <h3>Sport Rules</h3>
+          {#if rulesLoading}
+            <div class="loading">Loading sport rules...</div>
+          {:else if sportRules.length > 0}
+            <div class="rules-grid">
+              {#each sportRules as rule (rule.id)}
+                <div
+                  class="rule-card"
+                  on:dragover={handleDragOver}
+                  on:dragleave={handleDragLeave}
+                  on:drop={(e) => handleRuleDrop(e, rule.id, rule.title)}
+                >
+                  {#if ruleCoverImages[rule.id]}
+                    <div class="card-image">
+                      <img src={ruleCoverImages[rule.id]} alt={rule.title} />
+                    </div>
+                  {/if}
+                  <h4 class="rule-title">{rule.title}</h4>
+                  {#if rule.summary}
+                    <p class="rule-summary">{rule.summary}</p>
+                  {/if}
+                  {#if rule.body}
+                    <div class="rule-body">
+                      {rule.body}
+                    </div>
+                  {/if}
+                  <div class="rule-meta">
+                    <span class="rule-date">
+                      {new Date(rule.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <p>No sport rules available yet for {sport.title}.</p>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {:else}
+    <div class="error">Sport not found</div>
+  {/if}
+</div>
+
+<style>
+  .sport-page {
+    min-height: 100vh;
+    background-color: #f8f9fa;
+  }
+
+  .page-header {
+    background-color: #e53935;
+    color: white;
+    padding: 2rem;
+    position: relative;
+  }
+
+  .back-btn {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 1rem;
+    transition: background-color 0.2s;
+  }
+
+  .back-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .page-header h1 {
+    margin: 0;
+    font-size: 2.5rem;
+  }
+
+  .loading {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+    font-size: 1.1rem;
+  }
+
+  .error {
+    background-color: #fee;
+    color: #c33;
+    padding: 1rem;
+    border-radius: 4px;
+    margin: 2rem;
+    text-align: center;
+  }
+
+  .sport-content {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .sport-header {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 2rem;
+  }
+
+  .sport-header h2 {
+    margin: 0 0 1rem 0;
+    color: #333;
+    font-size: 2rem;
+  }
+
+  .sport-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .meta-item {
+    background-color: #f8f9fa;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+
+  .sport-sections {
+    display: grid;
+    gap: 2rem;
+  }
+
+  .section {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .section h3 {
+    margin: 0 0 1rem 0;
+    color: #333;
+    font-size: 1.5rem;
+    border-bottom: 2px solid #e53935;
+    padding-bottom: 0.5rem;
+  }
+
+  .section p {
+    line-height: 1.6;
+    color: #444;
+    margin: 0;
+  }
+
+  .stories-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+
+  .story-card {
+    background-color: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    text-decoration: none;
+    color: inherit;
+    transition:
+      transform 0.3s ease,
+      box-shadow 0.3s ease;
+    display: block;
+  }
+
+  .story-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+  }
+
+  .story-card .card-image {
+    height: 200px;
+  }
+
+  .story-card .card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .story-card .card-content {
+    padding: 1rem;
+  }
+
+  .story-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+    line-height: 1.4;
+    color: #333;
+    font-weight: 600;
+  }
+
+  .story-summary {
+    color: #666;
+    line-height: 1.5;
+    margin: 0 0 1rem 0;
+    font-size: 0.9rem;
+  }
+
+  .story-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .story-date {
+    font-size: 0.85rem;
+    color: #888;
+  }
+
+  .read-more-btn {
+    background-color: #e53935;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+
+  .read-more-btn:hover {
+    background-color: #c62828;
+  }
+
+  .figures-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+
+  .figure-card {
+    background-color: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    text-decoration: none;
+    color: inherit;
+    transition:
+      transform 0.3s ease,
+      box-shadow 0.3s ease;
+    display: block;
+  }
+
+  .figure-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+  }
+
+  .figure-card .card-image {
+    height: 200px;
+  }
+
+  .figure-card .card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .figure-card .card-content {
+    padding: 1rem;
+  }
+
+  .figure-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+    line-height: 1.4;
+    color: #333;
+    font-weight: 600;
+  }
+
+  .figure-summary {
+    color: #666;
+    line-height: 1.5;
+    margin: 0 0 1rem 0;
+    font-size: 0.9rem;
+  }
+
+  .figure-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .figure-position {
+    font-size: 0.85rem;
+    color: #888;
+  }
+
+  .figure-date {
+    font-size: 0.85rem;
+    color: #888;
+  }
+
+  .read-more-btn {
+    background-color: #e53935;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+
+  .read-more-btn:hover {
+    background-color: #c62828;
+  }
+
+  .rules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+
+  .rule-card {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition:
+      transform 0.3s ease,
+      box-shadow 0.3s ease;
+  }
+
+  .rule-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+  }
+
+  .rule-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.2rem;
+    line-height: 1.4;
+    color: #333;
+    font-weight: 600;
+  }
+
+  .rule-summary {
+    color: #666;
+    line-height: 1.5;
+    margin: 0 0 1rem 0;
+    font-size: 0.95rem;
+  }
+
+  .rule-body {
+    color: #444;
+    line-height: 1.6;
+    margin: 0 0 1rem 0;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+  }
+
+  .rule-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .rule-date {
+    font-size: 0.85rem;
+    color: #888;
+  }
+
+  .action-section {
+    margin: 2rem 0;
+    text-align: center;
+  }
+
+  .generate-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+  }
+
+  .generate-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+  }
+
+  .generate-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .loading-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top: 2px solid white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+  .events-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+
+  .event-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition:
+      transform 0.3s ease,
+      box-shadow 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+  }
+
+  .event-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+  }
+
+  .event-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+
+  .event-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+    line-height: 1.4;
+    flex: 1;
+  }
+
+  .event-date {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+    margin-left: 1rem;
+  }
+
+  .event-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    opacity: 0.9;
+  }
+
+  .event-id {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .event-type {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .event-card .card-image,
+  .rule-card .card-image {
+    height: 200px;
+    overflow: hidden;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .event-card .card-image img,
+  .rule-card .card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .event-card .event-header {
+    padding: 1.5rem 1.5rem 0 1.5rem;
+  }
+
+  .event-card .event-meta {
+    padding: 0 1.5rem 1.5rem 1.5rem;
+  }
+
+  .rule-card .rule-title {
+    padding: 1.5rem 1.5rem 0 1.5rem;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .rule-card .rule-summary,
+  .rule-card .rule-body {
+    padding: 0 1.5rem;
+  }
+
+  .rule-card .rule-meta {
+    padding: 0 1.5rem 1.5rem 1.5rem;
+  }
+
+  /* Drag and drop styles */
+  .story-card.drag-over,
+  .figure-card.drag-over,
+  .event-card.drag-over,
+  .rule-card.drag-over {
+    transform: scale(1.02);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+    border: 3px dashed #667eea !important;
+    background-color: rgba(102, 126, 234, 0.05);
+  }
+
+  .story-card,
+  .figure-card,
+  .event-card,
+  .rule-card {
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+  }
+
+  .story-card:hover,
+  .figure-card:hover,
+  .event-card:hover,
+  .rule-card:hover {
+    cursor: pointer;
+  }
+
+  @media (max-width: 768px) {
+    .sport-content {
+      padding: 1rem;
+    }
+
+    .sport-header,
+    .section {
+      padding: 1.5rem;
+    }
+
+    .sport-meta {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+  }
+</style>

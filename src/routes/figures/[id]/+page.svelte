@@ -45,6 +45,16 @@
   let imageOffset = 0;
   let startY = 0;
   let startOffset = 0;
+  let blurbs: Array<{
+    id: number;
+    title: string;
+    description: string;
+    starred: boolean;
+    blurbable_type: string;
+    blurbable_id: number;
+  }> = [];
+  let blurbsLoading = false;
+  let blurbsError = "";
 
   const GOOGLE_API_KEY = "AIzaSyBtWG38u4C0YW1XHkHVimVdLCbu_Wwi6H4";
   // You need to create a Custom Search Engine at https://cse.google.com/
@@ -230,9 +240,44 @@
     }
   }
 
-  function startMove(event) {
+  async function generateBlurbs() {
+    if (!figure) return;
+    blurbsLoading = true;
+    blurbsError = "";
+    try {
+      const result = await API.post(`/blurbs/for/Figure/${figure.id}/wizard`, {
+        blurbable_type: "Figure",
+        blurbable_id: figure.id,
+      });
+      blurbs = result.blurbs || result;
+    } catch (err) {
+      blurbsError = "Failed to generate blurbs.";
+      console.error("Failed to generate blurbs:", err);
+    } finally {
+      blurbsLoading = false;
+    }
+  }
+
+  async function fetchBlurbs() {
+    if (!figure) return;
+    blurbsLoading = true;
+    blurbsError = "";
+    try {
+      const result = await API.get(`/blurbs/for/Figure/${figure.id}`);
+      blurbs = result.blurbs || result;
+    } catch (err) {
+      blurbsError = "Failed to load blurbs.";
+      console.error("Failed to load blurbs:", err);
+    } finally {
+      blurbsLoading = false;
+    }
+  }
+
+  function startMove(event: MouseEvent | TouchEvent) {
     moveMode = true;
-    startY = event.touches ? event.touches[0].clientY : event.clientY;
+    startY = (event as TouchEvent).touches
+      ? (event as TouchEvent).touches[0].clientY
+      : (event as MouseEvent).clientY;
     startOffset = imageOffset;
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", endMove);
@@ -240,9 +285,11 @@
     window.addEventListener("touchend", endMove);
   }
 
-  function onMove(event) {
+  function onMove(event: MouseEvent | TouchEvent) {
     if (!moveMode) return;
-    const y = event.touches ? event.touches[0].clientY : event.clientY;
+    const y = (event as TouchEvent).touches
+      ? (event as TouchEvent).touches[0].clientY
+      : (event as MouseEvent).clientY;
     imageOffset = startOffset + (y - startY);
   }
 
@@ -252,6 +299,11 @@
     window.removeEventListener("mouseup", endMove);
     window.removeEventListener("touchmove", onMove);
     window.removeEventListener("touchend", endMove);
+  }
+
+  // Fetch blurbs for the figure on mount or when figure.id changes
+  $: if (figure && figure.id) {
+    fetchBlurbs();
   }
 
   // Reactive statement to reload figure when route params change
@@ -270,6 +322,34 @@
   {:else if error}
     <div class="error">{error}</div>
   {:else if figure}
+    <div class="figure-blurbs-bar">
+      <button
+        class="generate-blurbs-btn"
+        on:click={generateBlurbs}
+        disabled={blurbsLoading}
+      >
+        {#if blurbsLoading}
+          <span class="loading-spinner-small"></span> Generating Blurbs...
+        {:else}
+          💡 Generate Fact Blurbs
+        {/if}
+      </button>
+      {#if blurbsError}
+        <span class="blurbs-error">{blurbsError}</span>
+      {/if}
+      {#if blurbs && blurbs.length > 0}
+        <div class="blurbs-list">
+          {#each blurbs as blurb}
+            <span
+              class="blurb-pill {blurb.starred ? 'starred' : ''}"
+              title={blurb.description}
+            >
+              {blurb.title}
+            </span>
+          {/each}
+        </div>
+      {/if}
+    </div>
     <!-- Image Header -->
     <div class="figure-header">
       <div class="header-image">
@@ -936,5 +1016,60 @@
   .image-container img {
     user-select: none;
     pointer-events: none;
+  }
+
+  .figure-blurbs-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .generate-blurbs-btn {
+    background: #2d6d62;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6em 1.2em;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    transition: background 0.2s;
+  }
+  .generate-blurbs-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  .blurbs-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .blurb-pill {
+    display: inline-block;
+    background: #f0f2f5;
+    color: #2d6d62;
+    border-radius: 999px;
+    padding: 0.4em 1em;
+    font-size: 0.98rem;
+    font-weight: 500;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    transition:
+      background 0.2s,
+      color 0.2s;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .blurb-pill.starred {
+    background: #ffe082;
+    color: #b55a23;
+    font-weight: bold;
+    border: 1px solid #ffd54f;
+  }
+  .blurbs-error {
+    color: #e53935;
+    font-size: 0.98rem;
+    margin-left: 1rem;
   }
 </style>

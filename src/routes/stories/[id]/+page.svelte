@@ -36,6 +36,19 @@
   let deleteError: Record<number, string> = {};
   let deletingStory = false;
   let deleteStoryError = "";
+  let verifying = false;
+  let verifyResult: null | {
+    story_id: number;
+    story_title: string;
+    validation: {
+      is_accurate: boolean;
+      confidence_score: number;
+      issues_found: string[];
+      verification_notes: string;
+      recommendations: string[];
+    };
+  } = null;
+  let verifyError = "";
 
   const GOOGLE_API_KEY = "AIzaSyBtWG38u4C0YW1XHkHVimVdLCbu_Wwi6H4";
   const SEARCH_ENGINE_ID = "b7571604c5c1c4c9e";
@@ -258,6 +271,22 @@
     }
   }
 
+  async function verifyStory() {
+    if (!story) return;
+    verifying = true;
+    verifyError = "";
+    verifyResult = null;
+    try {
+      const result = await API.get(`/stories/${story.id}/validate`);
+      verifyResult = result;
+    } catch (err) {
+      verifyError = "Failed to verify story.";
+      console.error("Failed to verify story:", err);
+    } finally {
+      verifying = false;
+    }
+  }
+
   onMount(() => {
     if (story) {
       loadPictures();
@@ -273,6 +302,17 @@
   {#if story}
     <div class="story-actions">
       <button
+        class="verify-story-btn"
+        on:click={verifyStory}
+        disabled={verifying}
+      >
+        {#if verifying}
+          <span class="loading-spinner-small"></span> Verifying...
+        {:else}
+          ✅ Verify
+        {/if}
+      </button>
+      <button
         class="delete-story-btn"
         on:click={deleteStory}
         disabled={deletingStory}
@@ -287,6 +327,51 @@
         <div class="error-message">{deleteStoryError}</div>
       {/if}
     </div>
+    {#if verifyError}
+      <div class="error-message">{verifyError}</div>
+    {/if}
+    {#if verifyResult && verifyResult.validation}
+      <div class="verify-result-box">
+        <div>
+          <strong>Accurate:</strong>
+          {verifyResult.validation.is_accurate ? "Yes" : "No"}
+        </div>
+        <div>
+          <strong>Confidence Score:</strong>
+          {verifyResult.validation.confidence_score}/100
+        </div>
+        <div>
+          <strong>Issues Found:</strong>
+          {#if verifyResult.validation.issues_found.length > 0}
+            <ul>
+              {#each verifyResult.validation.issues_found as issue}
+                <li>{issue}</li>
+              {/each}
+            </ul>
+          {:else}
+            None
+          {/if}
+        </div>
+        <div>
+          <strong>Verification Notes:</strong>
+          <div class="verify-notes">
+            {verifyResult.validation.verification_notes}
+          </div>
+        </div>
+        <div>
+          <strong>Recommendations:</strong>
+          {#if verifyResult.validation.recommendations.length > 0}
+            <ul>
+              {#each verifyResult.validation.recommendations as rec}
+                <li>{rec}</li>
+              {/each}
+            </ul>
+          {:else}
+            None
+          {/if}
+        </div>
+      </div>
+    {/if}
     <article class="story-article">
       <header class="story-header">
         <h1>{story.title}</h1>
@@ -821,8 +906,52 @@
   .story-actions {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     margin-bottom: 1.5rem;
+  }
+
+  .verify-story-btn {
+    background: #2d6d62;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6em 1.2em;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    transition: background 0.2s;
+    margin-right: 1rem;
+  }
+
+  .verify-story-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .verify-result-box {
+    background: #f8f9fa;
+    border: 1px solid #b5e0d4;
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 1.5rem;
+    margin-top: 0.5rem;
+    color: #1a1a1a;
+    font-size: 1rem;
+  }
+
+  .verify-result-box ul {
+    margin: 0.3em 0 0.5em 1.2em;
+    padding: 0;
+  }
+
+  .verify-notes {
+    background: #fff;
+    border-radius: 4px;
+    padding: 0.5em 0.8em;
+    margin-top: 0.3em;
+    font-size: 0.97em;
+    color: #333;
   }
 
   .delete-story-btn {

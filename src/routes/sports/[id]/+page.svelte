@@ -289,22 +289,28 @@
     moveMode = { ...moveMode };
   }
 
-  onMount(async () => {
-    try {
-      sport = await API.get(`/sports/${$page.params.id}`);
-      await Promise.all([
-        loadStories(),
-        loadFigures(),
-        loadSportRules(),
-        fetchEvents(),
-      ]);
-    } catch (err) {
-      console.error("Error fetching sport:", err);
-      error = "Error loading sport";
-    } finally {
-      loading = false;
-    }
-  });
+  // Remove or comment out the onMount fetch for sport
+  // onMount(async () => {
+  //   try {
+  //     sport = await API.get(`/sports/${$page.params.id}`);
+  //     await Promise.all([
+  //       loadStories(),
+  //       loadFigures(),
+  //       loadSportRules(),
+  //       fetchEvents(),
+  //     ]);
+  //   } catch (err) {
+  //     console.error("Error fetching sport:", err);
+  //     error = "Error loading sport";
+  //   } finally {
+  //     loading = false;
+  //   }
+  // });
+
+  // Reactive statement to load sport when $page.params.id changes
+  $: if ($page.params.id) {
+    loadSport();
+  }
 </script>
 
 <svelte:head>

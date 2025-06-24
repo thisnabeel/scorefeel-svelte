@@ -41,6 +41,10 @@
   let settingCover: number | null = null;
   let cardErrors: Record<number, string> = {};
   let deletingPicture: number | null = null;
+  let moveMode = false;
+  let imageOffset = 0;
+  let startY = 0;
+  let startOffset = 0;
 
   const GOOGLE_API_KEY = "AIzaSyBtWG38u4C0YW1XHkHVimVdLCbu_Wwi6H4";
   // You need to create a Custom Search Engine at https://cse.google.com/
@@ -226,6 +230,30 @@
     }
   }
 
+  function startMove(event) {
+    moveMode = true;
+    startY = event.touches ? event.touches[0].clientY : event.clientY;
+    startOffset = imageOffset;
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", endMove);
+    window.addEventListener("touchmove", onMove);
+    window.addEventListener("touchend", endMove);
+  }
+
+  function onMove(event) {
+    if (!moveMode) return;
+    const y = event.touches ? event.touches[0].clientY : event.clientY;
+    imageOffset = startOffset + (y - startY);
+  }
+
+  function endMove() {
+    moveMode = false;
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", endMove);
+    window.removeEventListener("touchmove", onMove);
+    window.removeEventListener("touchend", endMove);
+  }
+
   // Reactive statement to reload figure when route params change
   $: if ($page.params.id) {
     loadFigure();
@@ -251,7 +279,7 @@
           alt={figure.title}
         />
         <div class="header-overlay">
-          <button class="back-btn" on:click={goBack}> ← Back to Home </button>
+          <!-- <button class="back-btn" on:click={goBack}> ← Back to Home </button> -->
           <h1>{figure.title}</h1>
         </div>
       </div>
@@ -379,10 +407,27 @@
             <div class="pictures-grid">
               {#each figure.pictures as picture}
                 <div class="picture-card">
-                  <img
-                    src={picture.image_url}
-                    alt={picture.caption || figure.title}
-                  />
+                  <div
+                    class="move-btn"
+                    on:mousedown={startMove}
+                    on:touchstart={startMove}
+                    title="Move image"
+                  >
+                    <i class="fa-solid fa-up-down"></i>
+                  </div>
+                  <div
+                    class="image-container"
+                    style="overflow:hidden; height:300px; position:relative;"
+                  >
+                    <img
+                      src={picture.image_url}
+                      alt={picture.caption || figure.title}
+                      draggable="false"
+                      style="transform: translateY({imageOffset}px); transition: {moveMode
+                        ? 'none'
+                        : 'transform 0.2s'};"
+                    />
+                  </div>
                   {#if picture.caption}
                     <div class="picture-caption">
                       <p>{picture.caption}</p>
@@ -870,5 +915,26 @@
   .delete-picture-btn:disabled {
     opacity: 0.7;
     cursor: not-allowed;
+  }
+
+  .move-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 2;
+    background: white;
+    border-radius: 50%;
+    padding: 0.3em;
+    cursor: grab;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .move-btn:active {
+    cursor: grabbing;
+  }
+
+  .image-container img {
+    user-select: none;
+    pointer-events: none;
   }
 </style>

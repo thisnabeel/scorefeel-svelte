@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import API from "$lib/api/api.js";
+  import { goto } from "$app/navigation";
   export let data;
 
   interface Picture {
@@ -31,6 +32,10 @@
   let generatingImages = false;
   let cardErrors: Record<number, string> = {};
   let settingCover: number | null = null;
+  let deletingPicture: Record<number, boolean> = {};
+  let deleteError: Record<number, string> = {};
+  let deletingStory = false;
+  let deleteStoryError = "";
 
   const GOOGLE_API_KEY = "AIzaSyBtWG38u4C0YW1XHkHVimVdLCbu_Wwi6H4";
   const SEARCH_ENGINE_ID = "b7571604c5c1c4c9e";
@@ -68,6 +73,7 @@
     picturesError = null;
     try {
       pictures = await API.get(`/stories/${story.id}/pictures`);
+      story.pictures = pictures;
     } catch (err) {
       picturesError = "Failed to load pictures";
       console.error("Failed to load pictures:", err);
@@ -214,6 +220,44 @@
     }
   }
 
+  async function deletePicture(pictureId: number) {
+    deletingPicture[pictureId] = true;
+    deleteError[pictureId] = "";
+    try {
+      await API.delete(`/pictures/${pictureId}`);
+      // Remove the picture from the local array
+      pictures = pictures.filter((p: Picture) => p.id !== pictureId);
+    } catch (err) {
+      deleteError[pictureId] = "Failed to delete image.";
+      console.error("Failed to delete image:", err);
+    } finally {
+      deletingPicture[pictureId] = false;
+      deletingPicture = { ...deletingPicture };
+      deleteError = { ...deleteError };
+    }
+  }
+
+  async function deleteStory() {
+    if (!story) return;
+    if (
+      !confirm(
+        "Are you sure you want to delete this story? This action cannot be undone."
+      )
+    )
+      return;
+    deletingStory = true;
+    deleteStoryError = "";
+    try {
+      await API.delete(`/stories/${story.id}`);
+      goto("/");
+    } catch (err) {
+      deleteStoryError = "Failed to delete story.";
+      console.error("Failed to delete story:", err);
+    } finally {
+      deletingStory = false;
+    }
+  }
+
   onMount(() => {
     if (story) {
       loadPictures();
@@ -227,6 +271,22 @@
 
 <div class="story-view">
   {#if story}
+    <div class="story-actions">
+      <button
+        class="delete-story-btn"
+        on:click={deleteStory}
+        disabled={deletingStory}
+      >
+        {#if deletingStory}
+          <span class="loading-spinner-small"></span> Deleting Story...
+        {:else}
+          🗑️ Delete Story
+        {/if}
+      </button>
+      {#if deleteStoryError}
+        <div class="error-message">{deleteStoryError}</div>
+      {/if}
+    </div>
     <article class="story-article">
       <header class="story-header">
         <h1>{story.title}</h1>
@@ -283,6 +343,21 @@
                 {/if}
                 {#if picture.cover}
                   <span class="cover-badge">Cover Image</span>
+                {/if}
+                <button
+                  class="delete-picture-btn"
+                  title="Delete image"
+                  on:click={() => deletePicture(picture.id)}
+                  disabled={deletingPicture[picture.id]}
+                >
+                  {#if deletingPicture[picture.id]}
+                    <span class="loading-spinner-small"></span>
+                  {:else}
+                    🗑️
+                  {/if}
+                </button>
+                {#if deleteError[picture.id]}
+                  <div class="error-message">{deleteError[picture.id]}</div>
                 {/if}
                 {#if picture.caption}
                   <button
@@ -408,6 +483,8 @@
     margin-top: 2rem;
     border-radius: 12px;
     overflow: hidden;
+    max-height: 300px;
+    object-fit: contain;
   }
 
   .story-image img {
@@ -713,6 +790,55 @@
   }
 
   .generate-images-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .delete-picture-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #fff;
+    border: none;
+    border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0.3em 0.5em;
+    z-index: 2;
+    transition: background 0.2s;
+  }
+
+  .delete-picture-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .picture-card {
+    position: relative;
+  }
+
+  .story-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 1.5rem;
+  }
+
+  .delete-story-btn {
+    background: #e53935;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6em 1.2em;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    transition: background 0.2s;
+  }
+
+  .delete-story-btn:disabled {
     opacity: 0.7;
     cursor: not-allowed;
   }

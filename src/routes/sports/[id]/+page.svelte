@@ -31,6 +31,7 @@
     position?: number;
     created_at: string;
     updated_at?: string;
+    pictures?: { image_url: string; cover: boolean }[];
   }
 
   interface SportRule {
@@ -71,6 +72,10 @@
   let figureCoverImages: Record<number, string> = {};
   let eventCoverImages: Record<number, string> = {};
   let ruleCoverImages: Record<number, string> = {};
+
+  // Add local state for move mode and image offset per figure
+  let objectPositionY: Record<number, number> = {}; // percent, 0-100
+  let moveMode: Record<number, boolean> = {};
 
   async function loadSport() {
     loading = true;
@@ -255,6 +260,35 @@
     fetchEvents();
   }
 
+  function startMove(event: MouseEvent | TouchEvent, figureId: number) {
+    moveMode[figureId] = true;
+    window.addEventListener("mousemove", (e) => onMove(e, figureId));
+    window.addEventListener("mouseup", () => endMove(figureId));
+    window.addEventListener("touchmove", (e) => onMove(e, figureId));
+    window.addEventListener("touchend", () => endMove(figureId));
+  }
+
+  function onMove(event: MouseEvent | TouchEvent, figureId: number) {
+    if (!moveMode[figureId]) return;
+    const container = document.getElementById(
+      `figure-img-container-${figureId}`
+    );
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const y =
+      event instanceof TouchEvent ? event.touches[0].clientY : event.clientY;
+    let percent = ((y - rect.top) / rect.height) * 100;
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    objectPositionY[figureId] = percent;
+    objectPositionY = { ...objectPositionY };
+  }
+
+  function endMove(figureId: number) {
+    moveMode[figureId] = false;
+    moveMode = { ...moveMode };
+  }
+
   onMount(async () => {
     try {
       sport = await API.get(`/sports/${$page.params.id}`);
@@ -279,7 +313,7 @@
 
 <div class="sport-page">
   <header class="page-header">
-    <button class="back-btn" on:click={goBack}> ← Back to Home </button>
+    <!-- <button class="back-btn" on:click={goBack}> ← Back to Home </button> -->
     <h1>{sport?.title}</h1>
   </header>
 
@@ -419,12 +453,38 @@
                   on:dragover={handleDragOver}
                   on:dragleave={handleDragLeave}
                   on:drop={(e) => handleFigureDrop(e, figure.id, figure.title)}
+                  style="position: relative;"
                 >
-                  <div class="card-image">
+                  <div
+                    class="move-btn"
+                    title="Move image"
+                    style="left: 12px; right: auto;"
+                    on:mousedown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      startMove(e, figure.id);
+                    }}
+                    on:touchstart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      startMove(e, figure.id);
+                    }}
+                  >
+                    <i class="fa-solid fa-up-down"></i>
+                  </div>
+                  <div
+                    class="card-image"
+                    id={"figure-img-container-" + figure.id}
+                    style="overflow: hidden; height: 200px; position: relative;"
+                  >
                     <img
                       src={figure.pictures?.find((p) => p.cover)?.image_url ||
                         `https://placehold.co/600x400/1a1a1a/ffffff?text=${figure.title.split(" ").join("+")}`}
                       alt={figure.title}
+                      draggable="false"
+                      style="width: 100%; height: 100%; object-fit: cover; object-position: 50% {objectPositionY[
+                        figure.id
+                      ] || 50}%"
                     />
                   </div>
                   <div class="card-content">
@@ -433,12 +493,12 @@
                       <p class="figure-summary">{figure.summary}</p>
                     {/if}
                     <div class="figure-meta">
-                      <span class="figure-position">
+                      <!-- <span class="figure-position">
                         Position: {figure.position || "Not set"}
-                      </span>
-                      <span class="figure-date">
+                      </span> -->
+                      <!-- <span class="figure-date">
                         {new Date(figure.created_at).toLocaleDateString()}
-                      </span>
+                      </span> -->
                     </div>
                   </div>
                 </a>
@@ -1022,5 +1082,21 @@
       flex-direction: column;
       gap: 0.5rem;
     }
+  }
+
+  .move-btn {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: auto;
+    z-index: 2;
+    background: white;
+    border-radius: 50%;
+    padding: 0.3em;
+    cursor: grab;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+  .move-btn:active {
+    cursor: grabbing;
   }
 </style>

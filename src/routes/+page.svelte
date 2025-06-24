@@ -141,7 +141,9 @@
 
   .main-story-image img {
     width: 100%;
+    max-height: 300px;
     display: block;
+    object-fit: contain;
   }
 
   .main-story-content {

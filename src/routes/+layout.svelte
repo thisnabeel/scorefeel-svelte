@@ -288,7 +288,7 @@
         closeSidebar();
       }}
     >
-      ScoreFeel
+      <img src="/logo.png" alt="ScoreFeel Logo" />
     </div>
     <a href="/" class="join-btn-mobile">Join</a>
   </header>
@@ -301,7 +301,7 @@
         closeSidebar();
       }}
     >
-      <h1>ScoreFeel</h1>
+      <img src="/logo.png" alt="ScoreFeel Logo" style="height: 40px;" />
     </div>
 
     <!-- <div class="upgrade-box">
@@ -614,6 +614,7 @@
       font-weight: bold;
       color: #e53935; /* IGN-like red */
       cursor: pointer;
+      max-width: 160px;
     }
 
     .join-btn-mobile {

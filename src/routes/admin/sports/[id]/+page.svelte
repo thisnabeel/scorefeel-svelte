@@ -142,18 +142,6 @@
               {#if rule.summary}
                 <p><strong>Summary:</strong> {rule.summary}</p>
               {/if}
-              {#if rule.body}
-                <p>
-                  <strong>Body:</strong>
-                  {rule.body.length > 100
-                    ? rule.body.substring(0, 100) + "..."
-                    : rule.body}
-                </p>
-              {/if}
-              <p>
-                <strong>Created:</strong>
-                {new Date(rule.created_at).toLocaleDateString()}
-              </p>
             </div>
           {/each}
         </div>

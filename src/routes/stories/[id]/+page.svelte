@@ -50,8 +50,23 @@
   } = null;
   let verifyError = "";
 
+  interface BulletPoint {
+    id: number;
+    body: string;
+    bullet_pointable_type: string;
+    bullet_pointable_id: number;
+    position: number;
+  }
+
+  let bulletPointsLoading = false;
+  let bulletPointsError = "";
+  let bulletTab = "bullet";
+
   const GOOGLE_API_KEY = "AIzaSyBtWG38u4C0YW1XHkHVimVdLCbu_Wwi6H4";
   const SEARCH_ENGINE_ID = "b7571604c5c1c4c9e";
+
+  let deletingBullet: Record<number, boolean> = {};
+  let deleteBulletError: Record<number, string> = {};
 
   function formatDate(dateString: string) {
     if (!dateString) return "";
@@ -287,6 +302,51 @@
     }
   }
 
+  async function generateBulletPoints() {
+    if (!story) return;
+    bulletPointsLoading = true;
+    bulletPointsError = "";
+    try {
+      const result = await API.post(
+        `/bullet_points/for/Story/${story.id}/wizard`
+      );
+      console.log("result", result);
+      story = {
+        ...story,
+        bullet_points: result.bullet_points,
+      };
+      bulletTab = "bullet";
+    } catch (err) {
+      bulletPointsError = "Failed to generate bullet points.";
+      console.error("Failed to generate bullet points:", err);
+    } finally {
+      bulletPointsLoading = false;
+    }
+  }
+
+  async function deleteBulletPoint(bulletId: number) {
+    deletingBullet[bulletId] = true;
+    deleteBulletError[bulletId] = "";
+    try {
+      await API.delete(`/bullet_points/${bulletId}`);
+      if (story && story.bullet_points) {
+        story = {
+          ...story,
+          bullet_points: story.bullet_points.filter(
+            (bp: BulletPoint) => bp.id !== bulletId
+          ),
+        };
+      }
+    } catch (err) {
+      deleteBulletError[bulletId] = "Failed to delete bullet point.";
+      console.error("Failed to delete bullet point:", err);
+    } finally {
+      deletingBullet[bulletId] = false;
+      deletingBullet = { ...deletingBullet };
+      deleteBulletError = { ...deleteBulletError };
+    }
+  }
+
   onMount(() => {
     if (story) {
       loadPictures();
@@ -301,17 +361,30 @@
 <div class="story-view">
   {#if story}
     <div class="story-actions">
-      <button
-        class="verify-story-btn"
-        on:click={verifyStory}
-        disabled={verifying}
-      >
-        {#if verifying}
-          <span class="loading-spinner-small"></span> Verifying...
-        {:else}
-          ✅ Verify
-        {/if}
-      </button>
+      <div class="story-actions-left">
+        <button
+          class="verify-story-btn"
+          on:click={verifyStory}
+          disabled={verifying}
+        >
+          {#if verifying}
+            <span class="loading-spinner-small"></span> Verifying...
+          {:else}
+            ✅ Verify
+          {/if}
+        </button>
+        <button
+          class="bullet-points-btn"
+          on:click={generateBulletPoints}
+          disabled={bulletPointsLoading}
+        >
+          {#if bulletPointsLoading}
+            <span class="loading-spinner-small"></span> Bullet Points...
+          {:else}
+            • Bullet Points
+          {/if}
+        </button>
+      </div>
       <button
         class="delete-story-btn"
         on:click={deleteStory}
@@ -372,163 +445,68 @@
         </div>
       </div>
     {/if}
-    <article class="story-article">
-      <header class="story-header">
-        <h1>{story.title}</h1>
-        <p class="story-meta">
-          <span>Published on {formatDate(story.created_at)}</span>
-        </p>
-        <div class="story-image">
-          <img
-            src={story.pictures?.find((p) => p.cover)?.image_url ||
-              `https://placehold.co/1200x600/1a1a1a/ffffff?text=${story.title.split(" ").join("+")}`}
-            alt={story.title}
-          />
-        </div>
-      </header>
-
-      <div class="story-body">
-        {@html story.body}
+    {#if bulletPointsError}
+      <div class="error-message">{bulletPointsError}</div>
+    {/if}
+    <header class="story-header">
+      <h1>{story.title}</h1>
+      <p class="story-meta">
+        <span>Published on {formatDate(story.created_at)}</span>
+      </p>
+      <div class="story-image">
+        <img
+          src={story.pictures?.find((p) => p.cover)?.image_url ||
+            `https://placehold.co/1200x600/1a1a1a/ffffff?text=${story.title.split(" ").join("+")}`}
+          alt={story.title}
+        />
       </div>
-
-      <!-- Generate Images Section -->
-      <div class="images-section">
-        <div class="section-header">
-          <h2>Story Images</h2>
-          <button
-            class="generate-btn"
-            on:click={generatePictures}
-            disabled={generating}
-          >
-            <span class="icon">🎨</span>
-            {#if generating}
-              Generating...
-            {:else}
-              Generate Images
-            {/if}
-          </button>
-        </div>
-
-        {#if picturesError}
-          <div class="error-message">{picturesError}</div>
-        {/if}
-
-        {#if picturesLoading}
-          <div class="loading">Loading images...</div>
-        {:else if pictures.length > 0}
-          <div class="pictures-grid">
-            {#each pictures as picture (picture.id)}
-              <div class="picture-card">
-                <img
-                  src={picture.image_url}
-                  alt={picture.caption || "Story image"}
-                />
-                {#if picture.caption}
-                  <h4>{picture.caption}</h4>
-                {/if}
-                {#if picture.cover}
-                  <span class="cover-badge">Cover Image</span>
-                {/if}
+    </header>
+    <div class="story-tabs">
+      <button
+        class="tab-btn {bulletTab === 'bullet' ? 'active' : ''}"
+        on:click={() => (bulletTab = "bullet")}>Bullet Points</button
+      >
+      <button
+        class="tab-btn {bulletTab === 'full' ? 'active' : ''}"
+        on:click={() => (bulletTab = "full")}>Full Story</button
+      >
+    </div>
+    <div class="story-tab-content">
+      {#if bulletTab === "bullet"}
+        {#if bulletPointsLoading}
+          <div class="loading">Loading bullet points...</div>
+        {:else if story.bullet_points && story.bullet_points.length > 0}
+          <ul class="bullet-points-list">
+            {#each story.bullet_points as bp}
+              <li class="bullet-point">
+                {bp.body}
                 <button
-                  class="delete-picture-btn"
-                  title="Delete image"
-                  on:click={() => deletePicture(picture.id)}
-                  disabled={deletingPicture[picture.id]}
+                  class="delete-bullet-btn"
+                  title="Delete bullet point"
+                  on:click={() => deleteBulletPoint(bp.id)}
+                  disabled={deletingBullet[bp.id]}
                 >
-                  {#if deletingPicture[picture.id]}
+                  {#if deletingBullet[bp.id]}
                     <span class="loading-spinner-small"></span>
                   {:else}
                     🗑️
                   {/if}
                 </button>
-                {#if deleteError[picture.id]}
-                  <div class="error-message">{deleteError[picture.id]}</div>
+                {#if deleteBulletError[bp.id]}
+                  <span class="error-message">{deleteBulletError[bp.id]}</span>
                 {/if}
-                {#if picture.caption}
-                  <button
-                    class="generate-images-btn"
-                    on:click={() => generateImages(picture, picture.caption!)}
-                    disabled={generatingImages}
-                    title="Generate images based on caption"
-                  >
-                    {#if generatingImages}
-                      <span class="loading-spinner-small"></span>
-                      Generating...
-                    {:else}
-                      🔍 Generate Images
-                    {/if}
-                  </button>
-                {/if}
-              </div>
+              </li>
             {/each}
-          </div>
+          </ul>
         {:else}
-          <p class="no-images">
-            No images generated yet. Click "Generate Images" to create
-            AI-powered images for this story.
-          </p>
+          <div class="no-bullet-points">No bullet points generated yet.</div>
         {/if}
-
-        <!-- Search Results -->
-        {#if searchResults.length > 0}
-          <div class="search-results-section">
-            <h3>Generated Images from Caption</h3>
-            <div class="search-results-scroll">
-              {#each searchResults as result, index}
-                <div class="search-result-card">
-                  <img
-                    src={result.image.thumbnailLink}
-                    alt={result.title}
-                    on:error={(e) =>
-                      ((e.target as HTMLImageElement).style.display = "none")}
-                  />
-                  <div class="result-info">
-                    <h4>{result.title}</h4>
-                    <p>{result.snippet}</p>
-                    {#if cardErrors[index]}
-                      <div class="card-error">
-                        <span class="error-message">{cardErrors[index]}</span>
-                        <button
-                          class="clear-error-btn"
-                          on:click={() => {
-                            cardErrors[index] = "";
-                            cardErrors = { ...cardErrors };
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    {/if}
-                    <div class="result-actions">
-                      <a
-                        href={result.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="view-original-btn"
-                      >
-                        View Original
-                      </a>
-                      <button
-                        class="set-cover-btn"
-                        on:click={() => setAsCover(result.link, index)}
-                        disabled={settingCover === index}
-                      >
-                        {#if settingCover === index}
-                          <span class="loading-spinner-small"></span>
-                          Setting Cover...
-                        {:else}
-                          🖼️ Set Cover
-                        {/if}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-      </div>
-    </article>
+      {:else}
+        <div class="story-body">
+          {@html story.body}
+        </div>
+      {/if}
+    </div>
   {:else if error}
     <p class="error-message">{error.message}</p>
   {:else}
@@ -910,8 +888,14 @@
     margin-bottom: 1.5rem;
   }
 
-  .verify-story-btn {
-    background: #2d6d62;
+  .story-actions-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .bullet-points-btn {
+    background: #4075a6;
     color: #fff;
     border: none;
     border-radius: 6px;
@@ -921,12 +905,65 @@
     cursor: pointer;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
     transition: background 0.2s;
-    margin-right: 1rem;
   }
 
-  .verify-story-btn:disabled {
+  .bullet-points-btn:disabled {
     opacity: 0.7;
     cursor: not-allowed;
+  }
+
+  .story-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.2rem;
+  }
+
+  .tab-btn {
+    background: #f0f2f5;
+    color: #2d6d62;
+    border: none;
+    border-radius: 999px;
+    padding: 0.5em 1.5em;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+
+  .tab-btn.active {
+    background: #2d6d62;
+    color: #fff;
+    font-weight: bold;
+  }
+
+  .story-tab-content {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    padding: 2rem;
+    margin-bottom: 2rem;
+  }
+
+  .bullet-points-list {
+    list-style: disc inside;
+    padding-left: 1.5em;
+    margin: 0;
+  }
+
+  .bullet-point {
+    margin-bottom: 0.7em;
+    font-size: 1.1rem;
+    color: #333;
+    line-height: 1.5;
+  }
+
+  .no-bullet-points {
+    color: #888;
+    font-size: 1.05rem;
+    padding: 1.5em 0;
+    text-align: center;
   }
 
   .verify-result-box {
@@ -970,5 +1007,29 @@
   .delete-story-btn:disabled {
     opacity: 0.7;
     cursor: not-allowed;
+  }
+
+  .delete-bullet-btn {
+    margin-left: 1em;
+    background: #fff;
+    border: none;
+    border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.2em 0.5em;
+    vertical-align: middle;
+    transition: background 0.2s;
+  }
+
+  .delete-bullet-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .bullet-point {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
 </style>

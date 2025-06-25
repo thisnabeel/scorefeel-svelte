@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import API from "$lib/api/api.js";
@@ -47,11 +47,12 @@
   interface Event {
     id: number;
     title: string;
-    date: string;
+    start_date: string;
     eventable_type: string;
     eventable_id: number;
     created_at: string;
     updated_at: string;
+    end_date?: string;
   }
 
   let sport: Sport | null = null;
@@ -76,6 +77,73 @@
   // Add local state for move mode and image offset per figure
   let objectPositionY: Record<number, number> = {}; // percent, 0-100
   let moveMode: Record<number, boolean> = {};
+
+  // Event creation form state
+  let newEventTitle = "";
+  let newEventDate = "";
+  let newEventEndDate = "";
+  let creatingEvent = false;
+  let createEventError = "";
+
+  // Countdown helper
+  function getCountdown(targetDate: string, endDate?: string) {
+    // If endDate is in the future, use that for countdown
+    let target = new Date(targetDate).getTime();
+    if (endDate) {
+      const end = new Date(endDate).getTime();
+      if (end > Date.now()) {
+        target = end;
+      }
+    }
+    const now = Date.now();
+    let diff = target - now;
+    if (diff <= 0) return null;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    diff -= days * 1000 * 60 * 60 * 24;
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    diff -= hours * 1000 * 60 * 60;
+    const minutes = Math.floor(diff / (1000 * 60));
+    diff -= minutes * 1000 * 60;
+    const seconds = Math.floor(diff / 1000);
+    return { days, hours, minutes, seconds };
+  }
+
+  let countdowns: Record<
+    number,
+    { days: number; hours: number; minutes: number; seconds: number } | null
+  > = {};
+  let countdownInterval: any = null;
+
+  function startCountdowns() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+      if (!events) return;
+      const now = Date.now();
+      events.forEach((event) => {
+        const startTime = new Date(event.start_date).getTime();
+        const endTime = event.end_date
+          ? new Date(event.end_date).getTime()
+          : null;
+
+        // If current date is between start_date and end_date, don't show countdown
+        if (endTime && now >= startTime && now <= endTime) {
+          countdowns[event.id] = null;
+        } else {
+          // Use end_date if present and in the future, else use start_date
+          const target = endTime && endTime > now ? endTime : startTime;
+          if (target > now) {
+            countdowns[event.id] = getCountdown(
+              event.start_date,
+              event.end_date
+            );
+          } else {
+            countdowns[event.id] = null;
+          }
+        }
+      });
+      countdowns = { ...countdowns };
+    }, 1000);
+  }
 
   async function loadSport() {
     loading = true;
@@ -155,6 +223,36 @@
       error = "Error generating event";
     } finally {
       generatingEvent = false;
+    }
+  }
+
+  async function createEvent() {
+    if (!sport || !newEventTitle || !newEventDate) return;
+    creatingEvent = true;
+    createEventError = "";
+    // Validate end_date >= date if provided
+    if (newEventEndDate && newEventEndDate < newEventDate) {
+      createEventError = "End date cannot be before start date.";
+      creatingEvent = false;
+      return;
+    }
+    try {
+      await API.post("/events", {
+        title: newEventTitle,
+        eventable_type: "Sport",
+        eventable_id: sport.id,
+        start_date: newEventDate,
+        end_date: newEventEndDate || undefined,
+      });
+      newEventTitle = "";
+      newEventDate = "";
+      newEventEndDate = "";
+      await fetchEvents();
+    } catch (err) {
+      createEventError = "Failed to create event.";
+      console.error("Failed to create event:", err);
+    } finally {
+      creatingEvent = false;
     }
   }
 
@@ -311,6 +409,35 @@
   $: if ($page.params.id) {
     loadSport();
   }
+
+  // Reactive statement to start countdowns when events are loaded
+  $: if (events && events.length > 0) {
+    startCountdowns();
+  }
+
+  // Cleanup on destroy
+  onDestroy(() => {
+    if (countdownInterval) clearInterval(countdownInterval);
+  });
+
+  let deletingEvent: Record<number, boolean> = {};
+  let deleteEventError: Record<number, string> = {};
+
+  async function deleteEvent(eventId: number) {
+    deletingEvent[eventId] = true;
+    deleteEventError[eventId] = "";
+    try {
+      await API.delete(`/events/${eventId}`);
+      await fetchEvents();
+    } catch (err) {
+      deleteEventError[eventId] = "Failed to delete event.";
+      console.error("Failed to delete event:", err);
+    } finally {
+      deletingEvent[eventId] = false;
+      deletingEvent = { ...deletingEvent };
+      deleteEventError = { ...deleteEventError };
+    }
+  }
 </script>
 
 <svelte:head>
@@ -352,20 +479,44 @@
         </div>
       </div>
 
-      <!-- Generate Events Button -->
+      <!-- Replace Generate Events Button with Event Form -->
       <div class="action-section">
-        <button
-          class="generate-btn"
-          on:click={generateEvent}
-          disabled={generatingEvent}
-        >
-          {#if generatingEvent}
-            <span class="loading-spinner"></span>
-            Generating Event...
-          {:else}
-            ⚡ Generate Event
-          {/if}
-        </button>
+        <form class="event-form" on:submit|preventDefault={createEvent}>
+          <input
+            class="event-title-input"
+            type="text"
+            placeholder="Event Title"
+            bind:value={newEventTitle}
+            required
+          />
+          <input
+            class="event-date-input"
+            type="date"
+            bind:value={newEventDate}
+            required
+          />
+          <input
+            class="event-end-date-input"
+            type="date"
+            bind:value={newEventEndDate}
+            min={newEventDate}
+            placeholder="End Date (optional)"
+          />
+          <button
+            class="create-event-btn"
+            type="submit"
+            disabled={creatingEvent}
+          >
+            {#if creatingEvent}
+              <span class="loading-spinner-small"></span> Creating Event...
+            {:else}
+              ➕ Create Event
+            {/if}
+          </button>
+        </form>
+        {#if createEventError}
+          <div class="error-message">{createEventError}</div>
+        {/if}
       </div>
 
       <!-- Events Section -->
@@ -376,12 +527,28 @@
         {:else if events.length > 0}
           <div class="events-grid">
             {#each events as event}
+              {@const countdown = countdowns[event.id]}
               <div
                 class="event-card"
                 on:dragover={handleDragOver}
                 on:dragleave={handleDragLeave}
                 on:drop={(e) => handleEventDrop(e, event.id, event.title)}
               >
+                <button
+                  class="delete-event-btn"
+                  title="Delete event"
+                  on:click={() => deleteEvent(event.id)}
+                  disabled={deletingEvent[event.id]}
+                >
+                  {#if deletingEvent[event.id]}
+                    <span class="loading-spinner-small"></span>
+                  {:else}
+                    🗑️
+                  {/if}
+                </button>
+                {#if deleteEventError[event.id]}
+                  <div class="error-message">{deleteEventError[event.id]}</div>
+                {/if}
                 {#if eventCoverImages[event.id]}
                   <div class="card-image">
                     <img src={eventCoverImages[event.id]} alt={event.title} />
@@ -389,13 +556,27 @@
                 {/if}
                 <div class="event-header">
                   <h3>{event.title}</h3>
-                  <span class="event-date"
-                    >{new Date(event.date).toLocaleDateString()}</span
-                  >
+                  <span class="event-date">
+                    {#if event.end_date}
+                      {new Date(event.start_date).toLocaleDateString()} - {new Date(
+                        event.end_date
+                      ).toLocaleDateString()}
+                    {:else}
+                      {new Date(event.start_date).toLocaleDateString()}
+                    {/if}
+                  </span>
                 </div>
                 <div class="event-meta">
-                  <span class="event-id">ID: {event.id}</span>
-                  <span class="event-type">{event.eventable_type}</span>
+                  {#if countdown}
+                    <div class="countdown">
+                      <span class="countdown-value">
+                        {#if countdown.days > 0}
+                          {countdown.days}d
+                        {/if}
+                        {countdown.hours}h {countdown.minutes}m {countdown.seconds}s
+                      </span>
+                    </div>
+                  {/if}
                 </div>
               </div>
             {/each}
@@ -900,33 +1081,41 @@
     text-align: center;
   }
 
-  .generate-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    display: inline-flex;
+  .event-form {
+    display: flex;
+    gap: 1rem;
     align-items: center;
-    gap: 0.5rem;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    flex-wrap: wrap;
   }
 
-  .generate-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+  .event-title-input,
+  .event-date-input,
+  .event-end-date-input {
+    padding: 0.5em 1em;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 1rem;
   }
 
-  .generate-btn:disabled {
+  .create-event-btn {
+    background: #2d6d62;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6em 1.2em;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    transition: background 0.2s;
+  }
+
+  .create-event-btn:disabled {
     opacity: 0.7;
     cursor: not-allowed;
   }
 
-  .loading-spinner {
+  .loading-spinner-small {
     width: 16px;
     height: 16px;
     border: 2px solid transparent;
@@ -960,6 +1149,7 @@
       transform 0.3s ease,
       box-shadow 0.3s ease;
     box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+    position: relative;
   }
 
   .event-card:hover {
@@ -1104,5 +1294,46 @@
   }
   .move-btn:active {
     cursor: grabbing;
+  }
+
+  .countdown {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    background: #f0f2f5;
+    color: #2d6d62;
+    border-radius: 999px;
+    padding: 0.2em 0.9em;
+    font-size: 0.98rem;
+    font-weight: 500;
+    margin-top: 0.5em;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+  .countdown-label {
+    font-weight: 600;
+    color: #b55a23;
+  }
+  .countdown-value {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 1.05em;
+  }
+
+  .delete-event-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: #fff;
+    border: none;
+    border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0.3em 0.5em;
+    z-index: 2;
+    transition: background 0.2s;
+  }
+  .delete-event-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>

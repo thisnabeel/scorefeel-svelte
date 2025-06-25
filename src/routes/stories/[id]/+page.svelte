@@ -461,6 +461,149 @@
         />
       </div>
     </header>
+
+    <!-- Images Section -->
+    <div class="images-section">
+      <div class="section-header">
+        <h2>Story Images</h2>
+        <button
+          class="generate-btn"
+          on:click={generatePictures}
+          disabled={generating}
+        >
+          {#if generating}
+            <span class="loading-spinner-small"></span> Generating Images...
+          {:else}
+            ➕ Generate Images
+          {/if}
+        </button>
+      </div>
+      {#if picturesLoading}
+        <div class="loading">Loading images...</div>
+      {:else if pictures.length > 0}
+        <div class="pictures-grid">
+          {#each pictures as picture, i (picture.id)}
+            <div class="picture-card">
+              <img
+                src={picture.image_url}
+                alt={picture.caption || story.title}
+              />
+              {#if picture.cover}
+                <span class="cover-badge">Cover</span>
+              {/if}
+              <button
+                class="delete-picture-btn"
+                title="Delete image"
+                on:click={() => deletePicture(picture.id)}
+                disabled={deletingPicture[picture.id]}
+              >
+                {#if deletingPicture[picture.id]}
+                  <span class="loading-spinner-small"></span>
+                {:else}
+                  🗑️
+                {/if}
+              </button>
+              <button
+                class="generate-images-btn"
+                on:click={() =>
+                  generateImages(picture, picture.caption || story.title)}
+                disabled={generatingImages}
+              >
+                {#if generatingImages && selectedPicture?.id === picture.id}
+                  <span class="loading-spinner-small"></span> Generating...
+                {:else}
+                  🎨 Generate
+                {/if}
+              </button>
+              <button
+                class="set-cover-btn"
+                on:click={async () =>
+                  await API.put(`/pictures/${picture.id}`, {
+                    cover: !picture.cover,
+                  })}
+                disabled={settingCover === i || picture.cover}
+                style="margin: 0.5rem;"
+              >
+                {#if settingCover === i}
+                  <span class="loading-spinner-small"></span> Setting Cover...
+                {:else if picture.cover}
+                  Cover
+                {:else}
+                  Set as Cover
+                {/if}
+              </button>
+              {#if cardErrors[i]}
+                <div class="card-error">
+                  <span>{cardErrors[i]}</span>
+                  <button
+                    class="clear-error-btn"
+                    on:click={() => {
+                      cardErrors[i] = "";
+                      cardErrors = { ...cardErrors };
+                    }}>✖</button
+                  >
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <div class="no-images">No images available for this story yet.</div>
+      {/if}
+
+      <!-- Show search results for generated images -->
+      {#if searchResults.length > 0 && selectedPicture}
+        <div class="search-results-section">
+          <h3>
+            Generated Images for: {selectedPicture.caption || story.title}
+          </h3>
+          <div class="search-results-scroll">
+            {#each searchResults as result, idx}
+              <div class="search-result-card">
+                <img src={result.image.thumbnailLink} alt={result.title} />
+                <div class="result-info">
+                  <h4>{result.title}</h4>
+                  <p>{result.snippet}</p>
+                  <div class="result-actions">
+                    <a
+                      class="view-original-btn"
+                      href={result.link}
+                      target="_blank">View Original</a
+                    >
+                    <button
+                      class="set-cover-btn"
+                      on:click={() => setAsCover(result.link, idx)}
+                      disabled={settingCover === idx}
+                    >
+                      {#if settingCover === idx}
+                        <span class="loading-spinner-small"></span> Setting Cover...
+                      {:else}
+                        Set as Cover
+                      {/if}
+                    </button>
+                  </div>
+                  {#if cardErrors[idx]}
+                    <div class="card-error">
+                      <span>{cardErrors[idx]}</span>
+                      <button
+                        class="clear-error-btn"
+                        on:click={() => {
+                          cardErrors[idx] = "";
+                          cardErrors = { ...cardErrors };
+                        }}>✖</button
+                      >
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+      {#if picturesError}
+        <div class="error-message">{picturesError}</div>
+      {/if}
+    </div>
     <div class="story-tabs">
       <button
         class="tab-btn {bulletTab === 'bullet' ? 'active' : ''}"

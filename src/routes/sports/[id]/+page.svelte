@@ -438,6 +438,28 @@
       deleteEventError = { ...deleteEventError };
     }
   }
+
+  let generatingRules = false;
+  let generateRulesError = "";
+
+  async function generateSportRules() {
+    if (!sport) return;
+    generatingRules = true;
+    generateRulesError = "";
+    try {
+      const response = await API.post(
+        `/sports/${sport.id}/generate_sport_rules`
+      );
+      if (response && response.sport_rules && response.sport_rules.length > 0) {
+        sportRules = [...response.sport_rules, ...sportRules];
+      }
+    } catch (err) {
+      generateRulesError = "Failed to generate sport rules.";
+      console.error("Failed to generate sport rules:", err);
+    } finally {
+      generatingRules = false;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -458,23 +480,30 @@
     <div class="sport-content">
       <div class="sport-header">
         <div class="sport-meta">
-          <span class="meta-item">
-            <strong>Sport ID:</strong>
-            {sport.id}
-          </span>
-          <div class="meta-item">
-            <span class="meta-label">Created:</span>
-            <span class="meta-value"
-              >{new Date(sport.created_at).toLocaleDateString()}</span
-            >
-          </div>
-          {#if sport.updated_at}
-            <div class="meta-item">
-              <span class="meta-label">Updated:</span>
-              <span class="meta-value"
-                >{new Date(sport.updated_at).toLocaleDateString()}</span
-              >
-            </div>
+          {#if events.length > 0}
+            {#each events as event}
+              {@const countdown = countdowns[event.id]}
+              <span class="meta-item">
+                <strong>
+                  {event.title}
+                </strong>
+                <i class="fa-solid fa-calendar-days"></i>
+                <p>
+                  {new Date(event.start_date).toLocaleDateString()}
+                  {#if event.end_date}
+                    <i class="fa-solid fa-calendar-days"></i>
+                    {new Date(event.end_date).toLocaleDateString()}
+                  {/if}
+                </p>
+                <div class="countdown">
+                  <span class="countdown-value">
+                    {#if countdown}
+                      {countdown.days}d {countdown.hours}h {countdown.minutes}m {countdown.seconds}s
+                    {/if}
+                  </span>
+                </div>
+              </span>
+            {/each}
           {/if}
         </div>
       </div>
@@ -520,71 +549,6 @@
       </div>
 
       <!-- Events Section -->
-      <section class="content-section">
-        <h2>Upcoming Events</h2>
-        {#if eventsLoading}
-          <div class="loading">Loading events...</div>
-        {:else if events.length > 0}
-          <div class="events-grid">
-            {#each events as event}
-              {@const countdown = countdowns[event.id]}
-              <div
-                class="event-card"
-                on:dragover={handleDragOver}
-                on:dragleave={handleDragLeave}
-                on:drop={(e) => handleEventDrop(e, event.id, event.title)}
-              >
-                <button
-                  class="delete-event-btn"
-                  title="Delete event"
-                  on:click={() => deleteEvent(event.id)}
-                  disabled={deletingEvent[event.id]}
-                >
-                  {#if deletingEvent[event.id]}
-                    <span class="loading-spinner-small"></span>
-                  {:else}
-                    🗑️
-                  {/if}
-                </button>
-                {#if deleteEventError[event.id]}
-                  <div class="error-message">{deleteEventError[event.id]}</div>
-                {/if}
-                {#if eventCoverImages[event.id]}
-                  <div class="card-image">
-                    <img src={eventCoverImages[event.id]} alt={event.title} />
-                  </div>
-                {/if}
-                <div class="event-header">
-                  <h3>{event.title}</h3>
-                  <span class="event-date">
-                    {#if event.end_date}
-                      {new Date(event.start_date).toLocaleDateString()} - {new Date(
-                        event.end_date
-                      ).toLocaleDateString()}
-                    {:else}
-                      {new Date(event.start_date).toLocaleDateString()}
-                    {/if}
-                  </span>
-                </div>
-                <div class="event-meta">
-                  {#if countdown}
-                    <div class="countdown">
-                      <span class="countdown-value">
-                        {#if countdown.days > 0}
-                          {countdown.days}d
-                        {/if}
-                        {countdown.hours}h {countdown.minutes}m {countdown.seconds}s
-                      </span>
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="no-content">No upcoming events found.</p>
-        {/if}
-      </section>
 
       <div class="sport-sections">
         <div class="section">
@@ -603,7 +567,7 @@
                 >
                   <div class="card-image">
                     <img
-                      src={storyCoverImages[story.id] ||
+                      src={story?.pictures?.find((p) => p.cover)?.image_url ||
                         `https://placehold.co/600x400/1a1a1a/ffffff?text=${story.title.split(" ").join("+")}`}
                       alt={story.title}
                     />
@@ -698,6 +662,21 @@
 
         <div class="section">
           <h3>Sport Rules</h3>
+          <button
+            class="create-event-btn"
+            on:click={generateSportRules}
+            disabled={generatingRules}
+            style="margin-bottom: 1rem;"
+          >
+            {#if generatingRules}
+              <span class="loading-spinner-small"></span> Generating Sport Rules...
+            {:else}
+              ➕ Generate Sport Rules
+            {/if}
+          </button>
+          {#if generateRulesError}
+            <div class="error-message">{generateRulesError}</div>
+          {/if}
           {#if rulesLoading}
             <div class="loading">Loading sport rules...</div>
           {:else if sportRules.length > 0}
@@ -718,16 +697,6 @@
                   {#if rule.summary}
                     <p class="rule-summary">{rule.summary}</p>
                   {/if}
-                  {#if rule.body}
-                    <div class="rule-body">
-                      {rule.body}
-                    </div>
-                  {/if}
-                  <div class="rule-meta">
-                    <span class="rule-date">
-                      {new Date(rule.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
                 </div>
               {/each}
             </div>

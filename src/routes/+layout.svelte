@@ -4,6 +4,8 @@
   import { page } from "$app/stores";
   import { onMount } from "svelte";
   import API from "$lib/api/api.js";
+  import { user } from "$lib/stores/user.js";
+  import { writable } from "svelte/store";
 
   interface Sport {
     id: number;
@@ -18,10 +20,28 @@
   let sports: Sport[] = [];
   let loading = false;
   let error: string | null = null;
+  let showAuthModal = false;
+  let authTab = "signIn";
+  let signInEmail = "";
+  let signInPassword = "";
+  let signUpEmail = "";
+  let signUpPassword = "";
+  let signUpPasswordConfirmation = "";
+  let signUpFirstName = "";
+  let signUpLastName = "";
+  let signUpBirthdate = "";
+  let signUpTimezone = "";
+  let authError = "";
+  let authLoading = false;
 
   function closeSidebar() {
     isSidebarOpen = false;
   }
+
+  $: console.log("user", $user);
+  // $: if ($user) {
+  //   user.set(null);
+  // }
 
   function getSportEmoji(sportTitle: string): string {
     const title = sportTitle.toLowerCase();
@@ -265,6 +285,61 @@
     }
   }
 
+  function openAuthModal() {
+    showAuthModal = true;
+    authTab = "signIn";
+    authError = "";
+  }
+
+  function closeAuthModal() {
+    showAuthModal = false;
+    authError = "";
+  }
+
+  async function handleSignIn() {
+    authLoading = true;
+    authError = "";
+    try {
+      const response = await API.post("/users/sign_in", {
+        email: signInEmail,
+        password: signInPassword,
+      });
+      user.set(response.user || response);
+      closeAuthModal();
+    } catch (err) {
+      authError = "Sign in failed. Please check your credentials.";
+      console.error(err);
+    } finally {
+      authLoading = false;
+    }
+  }
+
+  async function handleSignUp() {
+    authLoading = true;
+    authError = "";
+    try {
+      const response = await API.post("/users/sign_up", {
+        user: {
+          email: signUpEmail,
+          password: signUpPassword,
+          password_confirmation: signUpPasswordConfirmation,
+          first_name: signUpFirstName,
+          last_name: signUpLastName,
+          birthdate: signUpBirthdate,
+          timezone: signUpTimezone,
+          roles: [],
+        },
+      });
+      user.set(response.user || response);
+      closeAuthModal();
+    } catch (err) {
+      authError = "Sign up failed. Please check your details.";
+      console.error(err);
+    } finally {
+      authLoading = false;
+    }
+  }
+
   onMount(() => {
     loadSports();
   });
@@ -318,13 +393,15 @@
       >
         <span class="icon">🏠</span> Home
       </a>
-      <a
-        href="/admin"
-        class:active={$page.url.pathname === "/admin"}
-        on:click={closeSidebar}
-      >
-        <span class="icon"></span> Admin
-      </a>
+      {#if $user}
+        <a
+          href="/admin"
+          class:active={$page.url.pathname === "/admin"}
+          on:click={closeSidebar}
+        >
+          <span class="icon"></span> Admin
+        </a>
+      {/if}
       <!-- Search functionality not implemented yet
       <a
         href="/search"
@@ -360,7 +437,18 @@
     </nav>
 
     <div class="sidebar-footer">
-      <button class="join-btn">Join for free or log in</button>
+      {#if $user}
+        <button
+          class="join-btn"
+          on:click={() => {
+            user.set(null);
+          }}>Log out</button
+        >
+      {:else}
+        <button class="join-btn" on:click={openAuthModal}
+          >Join for free or log in</button
+        >
+      {/if}
     </div>
   </aside>
 
@@ -371,6 +459,99 @@
   <div class="main-content">
     <slot />
   </div>
+
+  {#if showAuthModal}
+    <div class="modal-overlay" on:click={closeAuthModal}></div>
+    <div class="auth-modal">
+      <div class="auth-tabs">
+        <button
+          class:active={authTab === "signIn"}
+          on:click={() => {
+            authTab = "signIn";
+            authError = "";
+          }}>Sign In</button
+        >
+        <button
+          class:active={authTab === "signUp"}
+          on:click={() => {
+            authTab = "signUp";
+            authError = "";
+          }}>Sign Up</button
+        >
+      </div>
+      {#if authTab === "signIn"}
+        <form on:submit|preventDefault={handleSignIn}>
+          <input
+            type="email"
+            placeholder="Email"
+            bind:value={signInEmail}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            bind:value={signInPassword}
+            required
+          />
+          <button type="submit" disabled={authLoading}
+            >{authLoading ? "Signing In..." : "Sign In"}</button
+          >
+        </form>
+      {:else}
+        <form on:submit|preventDefault={handleSignUp}>
+          <input
+            type="email"
+            placeholder="Email"
+            bind:value={signUpEmail}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            bind:value={signUpPassword}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Confirm Password"
+            bind:value={signUpPasswordConfirmation}
+            required
+          />
+          <input
+            type="text"
+            placeholder="First Name"
+            bind:value={signUpFirstName}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Last Name"
+            bind:value={signUpLastName}
+            required
+          />
+          <input
+            type="date"
+            placeholder="Birthdate"
+            bind:value={signUpBirthdate}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Timezone"
+            bind:value={signUpTimezone}
+            required
+          />
+          <button type="submit" disabled={authLoading}
+            >{authLoading ? "Signing Up..." : "Sign Up"}</button
+          >
+        </form>
+      {/if}
+      {#if authError}
+        <div class="auth-error">{authError}</div>
+      {/if}
+      <button class="close-modal" on:click={closeAuthModal}>×</button>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -644,5 +825,95 @@
     .sidebar-nav::-webkit-scrollbar {
       display: none; /* Chrome, Safari, Opera */
     }
+  }
+
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 2000;
+  }
+  .auth-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+    z-index: 2001;
+    min-width: 320px;
+    max-width: 95vw;
+  }
+  .auth-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .auth-tabs button {
+    flex: 1;
+    background: #f0f2f5;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    padding: 0.7rem 1rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .auth-tabs button.active {
+    background: #e53935;
+    color: #fff;
+  }
+  .auth-modal form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .auth-modal input {
+    padding: 0.7rem 1rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 1rem;
+  }
+  .auth-modal button[type="submit"] {
+    background: #2d6d62;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.7rem 1.2rem;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 0.5rem;
+    transition: background 0.2s;
+  }
+  .auth-modal button[type="submit"]:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  .auth-error {
+    color: #e53935;
+    background: #ffebee;
+    border: 1px solid #e53935;
+    padding: 0.7rem 1rem;
+    border-radius: 6px;
+    margin-top: 1rem;
+    text-align: center;
+  }
+  .close-modal {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: none;
+    border: none;
+    font-size: 2rem;
+    color: #888;
+    cursor: pointer;
+    z-index: 10;
   }
 </style>

@@ -3,6 +3,8 @@
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import API from "$lib/api/api.js";
+  import Page from "$lib/components/Pages/Page.svelte";
+  import { user } from "$lib/stores/user";
 
   interface Sport {
     id: number;
@@ -11,6 +13,7 @@
     position?: number;
     created_at: string;
     updated_at?: string;
+    pages?: Page[];
   }
 
   interface Story {
@@ -21,6 +24,7 @@
     sport_id: number;
     created_at: string;
     updated_at?: string;
+    pictures?: { image_url: string; cover: boolean }[];
   }
 
   interface Figure {
@@ -55,11 +59,25 @@
     end_date?: string;
   }
 
+  interface Page {
+    id: number;
+    title: string;
+    pageable_type: string;
+    pageable_id: number;
+    created_at: string;
+    updated_at?: string;
+    slug?: string;
+    position?: number;
+    level?: number;
+    full_path?: string;
+  }
+
   let sport: Sport | null = null;
   let stories: Story[] = [];
   let figures: Figure[] = [];
   let sportRules: SportRule[] = [];
   let events: Event[] = [];
+  let pages: Page[] = [];
   let loading = true;
   let storiesLoading = false;
   let figuresLoading = false;
@@ -67,6 +85,9 @@
   let eventsLoading = false;
   let generatingEvent = false;
   let error: string | null = null;
+  let pagesLoading = false;
+  let creatingPage = false;
+  let createPageError = "";
 
   // Cover image states
   let storyCoverImages: Record<number, string> = {};
@@ -356,6 +377,7 @@
     loadFigures();
     loadSportRules();
     fetchEvents();
+    loadPages();
   }
 
   function startMove(event: MouseEvent | TouchEvent, figureId: number) {
@@ -386,24 +408,6 @@
     moveMode[figureId] = false;
     moveMode = { ...moveMode };
   }
-
-  // Remove or comment out the onMount fetch for sport
-  // onMount(async () => {
-  //   try {
-  //     sport = await API.get(`/sports/${$page.params.id}`);
-  //     await Promise.all([
-  //       loadStories(),
-  //       loadFigures(),
-  //       loadSportRules(),
-  //       fetchEvents(),
-  //     ]);
-  //   } catch (err) {
-  //     console.error("Error fetching sport:", err);
-  //     error = "Error loading sport";
-  //   } finally {
-  //     loading = false;
-  //   }
-  // });
 
   // Reactive statement to load sport when $page.params.id changes
   $: if ($page.params.id) {
@@ -460,6 +464,45 @@
       generatingRules = false;
     }
   }
+
+  async function loadPages() {
+    if (!sport) return;
+    pagesLoading = true;
+    try {
+      pages = await API.get(`/sports/${sport.id}/pages`);
+    } catch (err) {
+      pages = [];
+      console.error("Failed to load pages:", err);
+    } finally {
+      pagesLoading = false;
+    }
+  }
+
+  async function createPage() {
+    if (!sport) return;
+    const title = prompt("Enter new page title:");
+    if (!title) return;
+    creatingPage = true;
+    createPageError = "";
+    try {
+      const response = await API.post("/pages", {
+        title,
+        pageable_type: "Sport",
+        pageable_id: sport.id,
+      });
+      if (response && response.id) {
+        sport = { ...sport, pages: [response, ...sport.pages] };
+      }
+    } catch (err) {
+      createPageError = "Failed to create page.";
+      console.error("Failed to create page:", err);
+    } finally {
+      creatingPage = false;
+    }
+  }
+
+  let selectedPage: Page | null = null;
+  let promptInput: string = "";
 </script>
 
 <svelte:head>
@@ -472,246 +515,298 @@
     <h1>{sport?.title}</h1>
   </header>
 
-  {#if loading}
-    <div class="loading">Loading sport information...</div>
-  {:else if error}
-    <div class="error">{error}</div>
-  {:else if sport}
-    <div class="sport-content">
-      <div class="sport-header">
-        <div class="sport-meta">
-          {#if events.length > 0}
-            {#each events as event}
-              {@const countdown = countdowns[event.id]}
-              <span class="meta-item">
-                <strong>
-                  {event.title}
-                </strong>
-                <i class="fa-solid fa-calendar-days"></i>
-                <p>
-                  {new Date(event.start_date).toLocaleDateString()}
-                  {#if event.end_date}
-                    <i class="fa-solid fa-calendar-days"></i>
-                    {new Date(event.end_date).toLocaleDateString()}
-                  {/if}
-                </p>
-                <div class="countdown">
-                  <span class="countdown-value">
-                    {#if countdown}
-                      {countdown.days}d {countdown.hours}h {countdown.minutes}m {countdown.seconds}s
-                    {/if}
-                  </span>
-                </div>
-              </span>
-            {/each}
-          {/if}
-        </div>
-      </div>
-
-      <!-- Replace Generate Events Button with Event Form -->
-      <div class="action-section">
-        <form class="event-form" on:submit|preventDefault={createEvent}>
-          <input
-            class="event-title-input"
-            type="text"
-            placeholder="Event Title"
-            bind:value={newEventTitle}
-            required
-          />
-          <input
-            class="event-date-input"
-            type="date"
-            bind:value={newEventDate}
-            required
-          />
-          <input
-            class="event-end-date-input"
-            type="date"
-            bind:value={newEventEndDate}
-            min={newEventDate}
-            placeholder="End Date (optional)"
-          />
-          <button
-            class="create-event-btn"
-            type="submit"
-            disabled={creatingEvent}
-          >
-            {#if creatingEvent}
-              <span class="loading-spinner-small"></span> Creating Event...
-            {:else}
-              ➕ Create Event
-            {/if}
-          </button>
-        </form>
-        {#if createEventError}
-          <div class="error-message">{createEventError}</div>
-        {/if}
-      </div>
-
-      <!-- Events Section -->
-
-      <div class="sport-sections">
-        <div class="section">
-          <h3>Latest Stories</h3>
-          {#if storiesLoading}
-            <div class="loading">Loading stories...</div>
-          {:else if stories.length > 0}
-            <div class="stories-grid">
-              {#each stories as story (story.id)}
-                <a
-                  href="/stories/{story.id}"
-                  class="story-card"
-                  on:dragover={handleDragOver}
-                  on:dragleave={handleDragLeave}
-                  on:drop={(e) => handleStoryDrop(e, story.id, story.title)}
-                >
-                  <div class="card-image">
-                    <img
-                      src={story?.pictures?.find((p) => p.cover)?.image_url ||
-                        `https://placehold.co/600x400/1a1a1a/ffffff?text=${story.title.split(" ").join("+")}`}
-                      alt={story.title}
-                    />
-                  </div>
-                  <div class="card-content">
-                    <h4 class="story-title">{story.title}</h4>
-                    {#if story.summary}
-                      <p class="story-summary">{story.summary}</p>
-                    {/if}
-                    <div class="story-meta">
-                      <span class="story-date">
-                        {new Date(story.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                </a>
-              {/each}
-            </div>
-          {:else}
-            <p>No stories available yet for {sport.title}.</p>
-          {/if}
-        </div>
-
-        <div class="section">
-          <h3>Sport Figures</h3>
-          {#if figuresLoading}
-            <div class="loading">Loading figures...</div>
-          {:else if figures.length > 0}
-            <div class="figures-grid">
-              {#each figures as figure (figure.id)}
-                <a
-                  href="/figures/{figure.id}"
-                  class="figure-card"
-                  on:dragover={handleDragOver}
-                  on:dragleave={handleDragLeave}
-                  on:drop={(e) => handleFigureDrop(e, figure.id, figure.title)}
-                  style="position: relative;"
-                >
-                  <div
-                    class="move-btn"
-                    title="Move image"
-                    style="left: 12px; right: auto;"
-                    on:mousedown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      startMove(e, figure.id);
-                    }}
-                    on:touchstart={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      startMove(e, figure.id);
-                    }}
-                  >
-                    <i class="fa-solid fa-up-down"></i>
-                  </div>
-                  <div
-                    class="card-image"
-                    id={"figure-img-container-" + figure.id}
-                    style="overflow: hidden; height: 200px; position: relative;"
-                  >
-                    <img
-                      src={figure.pictures?.find((p) => p.cover)?.image_url ||
-                        `https://placehold.co/600x400/1a1a1a/ffffff?text=${figure.title.split(" ").join("+")}`}
-                      alt={figure.title}
-                      draggable="false"
-                      style="width: 100%; height: 100%; object-fit: cover; object-position: 50% {objectPositionY[
-                        figure.id
-                      ] || 50}%"
-                    />
-                  </div>
-                  <div class="card-content">
-                    <h4 class="figure-title">{figure.title}</h4>
-                    {#if figure.summary}
-                      <p class="figure-summary">{figure.summary}</p>
-                    {/if}
-                    <div class="figure-meta">
-                      <!-- <span class="figure-position">
-                        Position: {figure.position || "Not set"}
-                      </span> -->
-                      <!-- <span class="figure-date">
-                        {new Date(figure.created_at).toLocaleDateString()}
-                      </span> -->
-                    </div>
-                  </div>
-                </a>
-              {/each}
-            </div>
-          {:else}
-            <p>No figures available yet for {sport.title}.</p>
-          {/if}
-        </div>
-
-        <div class="section">
-          <h3>Sport Rules</h3>
-          <button
-            class="create-event-btn"
-            on:click={generateSportRules}
-            disabled={generatingRules}
-            style="margin-bottom: 1rem;"
-          >
-            {#if generatingRules}
-              <span class="loading-spinner-small"></span> Generating Sport Rules...
-            {:else}
-              ➕ Generate Sport Rules
-            {/if}
-          </button>
-          {#if generateRulesError}
-            <div class="error-message">{generateRulesError}</div>
-          {/if}
-          {#if rulesLoading}
-            <div class="loading">Loading sport rules...</div>
-          {:else if sportRules.length > 0}
-            <div class="rules-grid">
-              {#each sportRules as rule (rule.id)}
-                <div
-                  class="rule-card"
-                  on:dragover={handleDragOver}
-                  on:dragleave={handleDragLeave}
-                  on:drop={(e) => handleRuleDrop(e, rule.id, rule.title)}
-                >
-                  {#if ruleCoverImages[rule.id]}
-                    <div class="card-image">
-                      <img src={ruleCoverImages[rule.id]} alt={rule.title} />
-                    </div>
-                  {/if}
-                  <h4 class="rule-title">{rule.title}</h4>
-                  {#if rule.summary}
-                    <p class="rule-summary">{rule.summary}</p>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <p>No sport rules available yet for {sport.title}.</p>
-          {/if}
-        </div>
-      </div>
-    </div>
+  <!-- 
+       Pills Section -->
+  {#if pagesLoading}
+    <div class="loading">Loading pages...</div>
   {:else}
-    <div class="error">Sport not found</div>
+    <div class="pages-pills-section sport-content">
+      {#if selectedPage}
+        <span class="page-pill go-home" on:click={() => (selectedPage = null)}
+          >{"<-"} {sport?.title} Home</span
+        >
+      {/if}
+      {#each sport?.pages || [] as page (page.id)}
+        <span
+          class="page-pill{selectedPage && selectedPage.id === page.id
+            ? ' active'
+            : ''}"
+          on:click={() => (selectedPage = page)}>{(page as Page).title}</span
+        >
+      {/each}
+      {#if $user}
+        <button
+          class="page-pill add-pill"
+          on:click={createPage}
+          disabled={creatingPage}
+          title="Add Page"
+        >
+          {#if creatingPage}
+            <span class="loading-spinner-small"></span>
+          {:else}
+            +
+          {/if}
+        </button>
+      {/if}
+    </div>
+    {#if createPageError}
+      <div class="error-message">{createPageError}</div>
+    {/if}
+  {/if}
+
+  {#if selectedPage}
+    <Page {selectedPage}></Page>
+  {:else}
+    <!-- Main sport content -->
+    {#if loading}
+      <div class="loading">Loading sport information...</div>
+    {:else if error}
+      <div class="error">{error}</div>
+    {:else if sport}
+      <div class="sport-content">
+        <div class="sport-header">
+          <div class="sport-meta">
+            {#if events.length > 0}
+              {#each events as event}
+                {@const countdown = countdowns[event.id]}
+                <span class="meta-item">
+                  <strong>
+                    {event.title}
+                  </strong>
+                  <i class="fa-solid fa-calendar-days"></i>
+                  <p>
+                    {new Date(event.start_date).toLocaleDateString()}
+                    {#if event.end_date}
+                      <i class="fa-solid fa-calendar-days"></i>
+                      {new Date(event.end_date).toLocaleDateString()}
+                    {/if}
+                  </p>
+                  <div class="countdown">
+                    <span class="countdown-value">
+                      {#if countdown}
+                        {countdown.days}d {countdown.hours}h {countdown.minutes}m
+                        {countdown.seconds}s
+                      {/if}
+                    </span>
+                  </div>
+                </span>
+              {/each}
+            {/if}
+          </div>
+        </div>
+        {#if $user}
+          <!-- Replace Generate Events Button with Event Form -->
+          <div class="action-section">
+            <form class="event-form" on:submit|preventDefault={createEvent}>
+              <input
+                class="event-title-input"
+                type="text"
+                placeholder="Event Title"
+                bind:value={newEventTitle}
+                required
+              />
+              <input
+                class="event-date-input"
+                type="date"
+                bind:value={newEventDate}
+                required
+              />
+              <input
+                class="event-end-date-input"
+                type="date"
+                bind:value={newEventEndDate}
+                min={newEventDate}
+                placeholder="End Date (optional)"
+              />
+              <button
+                class="create-event-btn"
+                type="submit"
+                disabled={creatingEvent}
+              >
+                {#if creatingEvent}
+                  <span class="loading-spinner-small"></span> Creating Event...
+                {:else}
+                  ➕ Create Event
+                {/if}
+              </button>
+            </form>
+            {#if createEventError}
+              <div class="error-message">{createEventError}</div>
+            {/if}
+          </div>
+        {/if}
+        <!-- Events Section -->
+
+        <div class="sport-sections">
+          <div class="section">
+            <h3>Latest Stories</h3>
+            {#if storiesLoading}
+              <div class="loading">Loading stories...</div>
+            {:else if stories.length > 0}
+              <div class="stories-grid">
+                {#each stories as story (story.id)}
+                  <a
+                    href="/stories/{story.id}"
+                    class="story-card"
+                    on:dragover={handleDragOver}
+                    on:dragleave={handleDragLeave}
+                    on:drop={(e) => handleStoryDrop(e, story.id, story.title)}
+                  >
+                    <div class="card-image">
+                      <img
+                        src={story?.pictures?.find((p) => p.cover)?.image_url ||
+                          `https://placehold.co/600x400/1a1a1a/ffffff?text=${story.title.split(" ").join("+")}`}
+                        alt={story.title}
+                      />
+                    </div>
+                    <div class="card-content">
+                      <h4 class="story-title">{story.title}</h4>
+                      {#if story.summary}
+                        <p class="story-summary">{story.summary}</p>
+                      {/if}
+                      <div class="story-meta">
+                        <span class="story-date">
+                          {new Date(story.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  </a>
+                {/each}
+              </div>
+            {:else}
+              <p>No stories available yet for {sport.title}.</p>
+            {/if}
+          </div>
+
+          <div class="section">
+            <h3>Sport Figures</h3>
+            {#if figuresLoading}
+              <div class="loading">Loading figures...</div>
+            {:else if figures.length > 0}
+              <div class="figures-grid">
+                {#each figures as figure (figure.id)}
+                  <a
+                    href="/figures/{figure.id}"
+                    class="figure-card"
+                    on:dragover={handleDragOver}
+                    on:dragleave={handleDragLeave}
+                    on:drop={(e) =>
+                      handleFigureDrop(e, figure.id, figure.title)}
+                    style="position: relative;"
+                  >
+                    <div
+                      class="move-btn"
+                      title="Move image"
+                      style="left: 12px; right: auto;"
+                      on:mousedown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        startMove(e, figure.id);
+                      }}
+                      on:touchstart={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        startMove(e, figure.id);
+                      }}
+                    >
+                      <i class="fa-solid fa-up-down"></i>
+                    </div>
+                    <div
+                      class="card-image"
+                      id={"figure-img-container-" + figure.id}
+                      style="overflow: hidden; height: 200px; position: relative;"
+                    >
+                      <img
+                        src={figure.pictures?.find((p) => p.cover)?.image_url ||
+                          `https://placehold.co/600x400/1a1a1a/ffffff?text=${figure.title.split(" ").join("+")}`}
+                        alt={figure.title}
+                        draggable="false"
+                        style="width: 100%; height: 100%; object-fit: cover; object-position: 50% {objectPositionY[
+                          figure.id
+                        ] || 50}%"
+                      />
+                    </div>
+                    <div class="card-content">
+                      <h4 class="figure-title">{figure.title}</h4>
+                      {#if figure.summary}
+                        <p class="figure-summary">{figure.summary}</p>
+                      {/if}
+                      <div class="figure-meta">
+                        <!-- <span class="figure-position">
+                          Position: {figure.position || "Not set"}
+                        </span> -->
+                        <!-- <span class="figure-date">
+                          {new Date(figure.created_at).toLocaleDateString()}
+                        </span> -->
+                      </div>
+                    </div>
+                  </a>
+                {/each}
+              </div>
+            {:else}
+              <p>No figures available yet for {sport.title}.</p>
+            {/if}
+          </div>
+
+          <div class="section">
+            <h3>Sport Rules</h3>
+            <button
+              class="create-event-btn"
+              on:click={generateSportRules}
+              disabled={generatingRules}
+              style="margin-bottom: 1rem;"
+            >
+              {#if generatingRules}
+                <span class="loading-spinner-small"></span> Generating Sport Rules...
+              {:else}
+                ➕ Generate Sport Rules
+              {/if}
+            </button>
+            {#if generateRulesError}
+              <div class="error-message">{generateRulesError}</div>
+            {/if}
+            {#if rulesLoading}
+              <div class="loading">Loading sport rules...</div>
+            {:else if sportRules.length > 0}
+              <div class="rules-grid">
+                {#each sportRules as rule (rule.id)}
+                  <div
+                    class="rule-card"
+                    on:dragover={handleDragOver}
+                    on:dragleave={handleDragLeave}
+                    on:drop={(e) => handleRuleDrop(e, rule.id, rule.title)}
+                  >
+                    {#if ruleCoverImages[rule.id]}
+                      <div class="card-image">
+                        <img src={ruleCoverImages[rule.id]} alt={rule.title} />
+                      </div>
+                    {/if}
+                    <h4 class="rule-title">{rule.title}</h4>
+                    {#if rule.summary}
+                      <p class="rule-summary">{rule.summary}</p>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <p>No sport rules available yet for {sport.title}.</p>
+            {/if}
+          </div>
+        </div>
+      </div>
+    {:else}
+      <div class="error">Sport not found</div>
+    {/if}
   {/if}
 </div>
 
 <style>
+  .go-home {
+    position: absolute;
+    top: 140px;
+    background: #fbff99;
+  }
+
   .sport-page {
     min-height: 100vh;
     background-color: #f8f9fa;
@@ -1304,5 +1399,52 @@
   .delete-event-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .pages-pills-section {
+    display: flex;
+    gap: 0.5rem;
+
+    flex-wrap: wrap;
+    align-items: center;
+    padding-bottom: 0;
+  }
+  .page-pill {
+    display: inline-block;
+    background: #f0f2f5;
+    color: #2d6d62;
+    border-radius: 999px;
+    padding: 0.4em 1.2em;
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 0.3em;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    transition:
+      background 0.2s,
+      color 0.2s;
+    border: none;
+    cursor: pointer;
+  }
+  .page-pill.add-pill {
+    background: #e53935;
+    color: #fff;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4em 1em;
+    font-size: 1.2rem;
+  }
+  .page-pill.add-pill:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .page-pill.active {
+    background: #2d6d62;
+    color: #fff;
+    font-weight: bold;
+    box-shadow: 0 2px 8px rgba(45, 109, 98, 0.1);
+    border: 2px solid #2d6d62;
   }
 </style>

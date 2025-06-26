@@ -7,6 +7,8 @@
   import { user } from "$lib/stores/user";
   import { get } from "svelte/store";
 
+  export let slug: string;
+
   interface Sport {
     id: number;
     title: string;
@@ -170,8 +172,9 @@
   async function loadSport() {
     loading = true;
     error = null;
+
     try {
-      sport = await API.get(`/sports/${$page.params.id}`);
+      sport = await API.get(`/sports/${slug ? slug : $page.params.id}`);
     } catch (err) {
       error = "Failed to load sport";
       console.error(err);
@@ -411,7 +414,7 @@
   }
 
   // Reactive statement to load sport when $page.params.id changes
-  $: if ($page.params.id) {
+  $: if ($page.params.id || slug) {
     loadSport();
   }
 

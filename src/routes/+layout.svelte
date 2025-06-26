@@ -365,7 +365,7 @@
     >
       <img src="/logo.png" alt="ScoreFeel Logo" />
     </div>
-    <a href="/" class="join-btn-mobile">Join</a>
+    <!-- <a href="/" class="join-btn-mobile">Join</a> -->
   </header>
 
   <aside class="sidebar" class:open={isSidebarOpen}>
@@ -703,7 +703,41 @@
   }
 
   .mobile-header {
-    display: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    padding: 0 1rem;
+    background-color: #fff;
+    border-bottom: 1px solid #e0e0e0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    z-index: 1000;
+  }
+
+  .mobile-logo {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #e53935; /* IGN-like red */
+    cursor: pointer;
+    max-width: 160px;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .join-btn-mobile {
+    background-color: #333;
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 0.9rem;
   }
 
   .sidebar-overlay {
@@ -795,6 +829,10 @@
       color: #e53935; /* IGN-like red */
       cursor: pointer;
       max-width: 160px;
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
 
     .join-btn-mobile {

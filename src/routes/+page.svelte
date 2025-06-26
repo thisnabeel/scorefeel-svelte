@@ -72,12 +72,12 @@
     {/if}
 
     <!-- Ad Placeholder -->
-    <div class="ad-placeholder">
+    <!-- <div class="ad-placeholder">
       <div class="ad-text">
         <h3>The best way around Oahu? All the way around.</h3>
         <p>Find top-rated ways to explore the whole island.</p>
       </div>
-    </div>
+    </div> -->
 
     <!-- Secondary Stories Section -->
     <section class="secondary-stories">

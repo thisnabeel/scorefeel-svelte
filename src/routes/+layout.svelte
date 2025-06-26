@@ -376,7 +376,11 @@
         closeSidebar();
       }}
     >
-      <img src="/logo.png" alt="ScoreFeel Logo" style="height: 40px;" />
+      <img
+        src="/logo.png"
+        alt="ScoreFeel Logo"
+        style="height: 40px; margin: 0 auto; display: block;"
+      />
     </div>
 
     <!-- <div class="upgrade-box">
@@ -394,13 +398,23 @@
         <span class="icon">🏠</span> Home
       </a>
       {#if $user}
-        <a
-          href="/admin"
-          class:active={$page.url.pathname === "/admin"}
-          on:click={closeSidebar}
+        {#if $user.admin}
+          <a
+            href="/admin"
+            class:active={$page.url.pathname === "/admin"}
+            on:click={closeSidebar}
+          >
+            <span class="icon"></span> Admin
+          </a>
+        {/if}
+        <button
+          class="join-btn"
+          on:click={() => {
+            user.set(null);
+          }}>Log out</button
         >
-          <span class="icon"></span> Admin
-        </a>
+      {:else}
+        <button class="join-btn" on:click={openAuthModal}>Join / Log in</button>
       {/if}
       <!-- Search functionality not implemented yet
       <a
@@ -435,21 +449,6 @@
         </div>
       {/if}
     </nav>
-
-    <div class="sidebar-footer">
-      {#if $user}
-        <button
-          class="join-btn"
-          on:click={() => {
-            user.set(null);
-          }}>Log out</button
-        >
-      {:else}
-        <button class="join-btn" on:click={openAuthModal}
-          >Join for free or log in</button
-        >
-      {/if}
-    </div>
   </aside>
 
   {#if isSidebarOpen}

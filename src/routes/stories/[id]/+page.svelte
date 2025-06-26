@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import API from "$lib/api/api.js";
   import { goto } from "$app/navigation";
+  import { user } from "$lib/stores/user.js";
+  import Tiptap from "$lib/components/Tiptap.svelte";
   export let data;
 
   interface Picture {
@@ -67,6 +69,16 @@
 
   let deletingBullet: Record<number, boolean> = {};
   let deleteBulletError: Record<number, string> = {};
+
+  let editingTitle = false;
+  let newTitle = "";
+  let savingTitle = false;
+  let saveTitleError = "";
+
+  let editingBody = false;
+  let newBody = "";
+  let savingBody = false;
+  let saveBodyError = "";
 
   function formatDate(dateString: string) {
     if (!dateString) return "";
@@ -347,6 +359,44 @@
     }
   }
 
+  async function saveStoryTitle() {
+    if (!story) return;
+    savingTitle = true;
+    saveTitleError = "";
+    try {
+      const response = await API.put(`/stories/${story.id}`, {
+        title: newTitle,
+      });
+      if (response && response.title) {
+        story.title = response.title;
+        editingTitle = false;
+      }
+    } catch (err) {
+      saveTitleError = "Failed to save title.";
+      console.error(err);
+    } finally {
+      savingTitle = false;
+    }
+  }
+
+  async function saveStoryBody() {
+    if (!story) return;
+    savingBody = true;
+    saveBodyError = "";
+    try {
+      const response = await API.put(`/stories/${story.id}`, { body: newBody });
+      if (response && response.body) {
+        story.body = response.body;
+        editingBody = false;
+      }
+    } catch (err) {
+      saveBodyError = "Failed to save story.";
+      console.error(err);
+    } finally {
+      savingBody = false;
+    }
+  }
+
   onMount(() => {
     if (story) {
       loadPictures();
@@ -360,96 +410,139 @@
 
 <div class="story-view">
   {#if story}
-    <div class="story-actions">
-      <div class="story-actions-left">
+    {#if $user && $user.admin}
+      <div class="story-actions">
+        <div class="story-actions-left">
+          <button
+            class="verify-story-btn"
+            on:click={verifyStory}
+            disabled={verifying}
+          >
+            {#if verifying}
+              <span class="loading-spinner-small"></span> Verifying...
+            {:else}
+              ✅ Verify
+            {/if}
+          </button>
+          <button
+            class="bullet-points-btn"
+            on:click={generateBulletPoints}
+            disabled={bulletPointsLoading}
+          >
+            {#if bulletPointsLoading}
+              <span class="loading-spinner-small"></span> Bullet Points...
+            {:else}
+              • Bullet Points
+            {/if}
+          </button>
+        </div>
         <button
-          class="verify-story-btn"
-          on:click={verifyStory}
-          disabled={verifying}
+          class="delete-story-btn"
+          on:click={deleteStory}
+          disabled={deletingStory}
         >
-          {#if verifying}
-            <span class="loading-spinner-small"></span> Verifying...
+          {#if deletingStory}
+            <span class="loading-spinner-small"></span> Deleting Story...
           {:else}
-            ✅ Verify
+            🗑️ Delete Story
           {/if}
         </button>
-        <button
-          class="bullet-points-btn"
-          on:click={generateBulletPoints}
-          disabled={bulletPointsLoading}
-        >
-          {#if bulletPointsLoading}
-            <span class="loading-spinner-small"></span> Bullet Points...
-          {:else}
-            • Bullet Points
-          {/if}
-        </button>
-      </div>
-      <button
-        class="delete-story-btn"
-        on:click={deleteStory}
-        disabled={deletingStory}
-      >
-        {#if deletingStory}
-          <span class="loading-spinner-small"></span> Deleting Story...
-        {:else}
-          🗑️ Delete Story
+        {#if deleteStoryError}
+          <div class="error-message">{deleteStoryError}</div>
         {/if}
-      </button>
-      {#if deleteStoryError}
-        <div class="error-message">{deleteStoryError}</div>
+      </div>
+      {#if verifyError}
+        <div class="error-message">{verifyError}</div>
       {/if}
-    </div>
-    {#if verifyError}
-      <div class="error-message">{verifyError}</div>
-    {/if}
-    {#if verifyResult && verifyResult.validation}
-      <div class="verify-result-box">
-        <div>
-          <strong>Accurate:</strong>
-          {verifyResult.validation.is_accurate ? "Yes" : "No"}
-        </div>
-        <div>
-          <strong>Confidence Score:</strong>
-          {verifyResult.validation.confidence_score}/100
-        </div>
-        <div>
-          <strong>Issues Found:</strong>
-          {#if verifyResult.validation.issues_found.length > 0}
-            <ul>
-              {#each verifyResult.validation.issues_found as issue}
-                <li>{issue}</li>
-              {/each}
-            </ul>
-          {:else}
-            None
-          {/if}
-        </div>
-        <div>
-          <strong>Verification Notes:</strong>
-          <div class="verify-notes">
-            {verifyResult.validation.verification_notes}
+      {#if verifyResult && verifyResult.validation}
+        <div class="verify-result-box">
+          <div>
+            <strong>Accurate:</strong>
+            {verifyResult.validation.is_accurate ? "Yes" : "No"}
+          </div>
+          <div>
+            <strong>Confidence Score:</strong>
+            {verifyResult.validation.confidence_score}/100
+          </div>
+          <div>
+            <strong>Issues Found:</strong>
+            {#if verifyResult.validation.issues_found.length > 0}
+              <ul>
+                {#each verifyResult.validation.issues_found as issue}
+                  <li>{issue}</li>
+                {/each}
+              </ul>
+            {:else}
+              None
+            {/if}
+          </div>
+          <div>
+            <strong>Verification Notes:</strong>
+            <div class="verify-notes">
+              {verifyResult.validation.verification_notes}
+            </div>
+          </div>
+          <div>
+            <strong>Recommendations:</strong>
+            {#if verifyResult.validation.recommendations.length > 0}
+              <ul>
+                {#each verifyResult.validation.recommendations as rec}
+                  <li>{rec}</li>
+                {/each}
+              </ul>
+            {:else}
+              None
+            {/if}
           </div>
         </div>
-        <div>
-          <strong>Recommendations:</strong>
-          {#if verifyResult.validation.recommendations.length > 0}
-            <ul>
-              {#each verifyResult.validation.recommendations as rec}
-                <li>{rec}</li>
-              {/each}
-            </ul>
-          {:else}
-            None
-          {/if}
-        </div>
-      </div>
-    {/if}
-    {#if bulletPointsError}
-      <div class="error-message">{bulletPointsError}</div>
+      {/if}
+      {#if bulletPointsError}
+        <div class="error-message">{bulletPointsError}</div>
+      {/if}
     {/if}
     <header class="story-header">
-      <h1>{story.title}</h1>
+      {#if $user && $user.admin}
+        {#if editingTitle}
+          <input
+            type="text"
+            bind:value={newTitle}
+            style="font-size:2.2rem;font-weight:700;width:70%;"
+          />
+          <button
+            class="save-title-btn"
+            on:click={saveStoryTitle}
+            disabled={savingTitle}
+          >
+            {#if savingTitle}
+              <span class="loading-spinner-small"></span> Saving...
+            {:else}
+              Save
+            {/if}
+          </button>
+          <button
+            class="cancel-title-btn"
+            on:click={() => {
+              editingTitle = false;
+            }}
+            disabled={savingTitle}>Cancel</button
+          >
+          {#if saveTitleError}
+            <div class="error-message">{saveTitleError}</div>
+          {/if}
+        {:else}
+          <h1
+            on:click={() => {
+              editingTitle = true;
+              newTitle = story.title;
+            }}
+            style="cursor:pointer;"
+          >
+            {story.title} <span class="edit-icon">✏️</span>
+          </h1>
+        {/if}
+      {:else}
+        <h1>{story.title}</h1>
+      {/if}
       <p class="story-meta">
         <span>Published on {formatDate(story.created_at)}</span>
       </p>
@@ -463,147 +556,149 @@
     </header>
 
     <!-- Images Section -->
-    <div class="images-section">
-      <div class="section-header">
-        <h2>Story Images</h2>
-        <button
-          class="generate-btn"
-          on:click={generatePictures}
-          disabled={generating}
-        >
-          {#if generating}
-            <span class="loading-spinner-small"></span> Generating Images...
-          {:else}
-            ➕ Generate Images
-          {/if}
-        </button>
-      </div>
-      {#if picturesLoading}
-        <div class="loading">Loading images...</div>
-      {:else if pictures.length > 0}
-        <div class="pictures-grid">
-          {#each pictures as picture, i (picture.id)}
-            <div class="picture-card">
-              <img
-                src={picture.image_url}
-                alt={picture.caption || story.title}
-              />
-              {#if picture.cover}
-                <span class="cover-badge">Cover</span>
-              {/if}
-              <button
-                class="delete-picture-btn"
-                title="Delete image"
-                on:click={() => deletePicture(picture.id)}
-                disabled={deletingPicture[picture.id]}
-              >
-                {#if deletingPicture[picture.id]}
-                  <span class="loading-spinner-small"></span>
-                {:else}
-                  🗑️
-                {/if}
-              </button>
-              <button
-                class="generate-images-btn"
-                on:click={() =>
-                  generateImages(picture, picture.caption || story.title)}
-                disabled={generatingImages}
-              >
-                {#if generatingImages && selectedPicture?.id === picture.id}
-                  <span class="loading-spinner-small"></span> Generating...
-                {:else}
-                  🎨 Generate
-                {/if}
-              </button>
-              <button
-                class="set-cover-btn"
-                on:click={async () =>
-                  await API.put(`/pictures/${picture.id}`, {
-                    cover: !picture.cover,
-                  })}
-                disabled={settingCover === i || picture.cover}
-                style="margin: 0.5rem;"
-              >
-                {#if settingCover === i}
-                  <span class="loading-spinner-small"></span> Setting Cover...
-                {:else if picture.cover}
-                  Cover
-                {:else}
-                  Set as Cover
-                {/if}
-              </button>
-              {#if cardErrors[i]}
-                <div class="card-error">
-                  <span>{cardErrors[i]}</span>
-                  <button
-                    class="clear-error-btn"
-                    on:click={() => {
-                      cardErrors[i] = "";
-                      cardErrors = { ...cardErrors };
-                    }}>✖</button
-                  >
-                </div>
-              {/if}
-            </div>
-          {/each}
+    {#if $user && $user.admin}
+      <div class="images-section">
+        <div class="section-header">
+          <h2>Story Images</h2>
+          <button
+            class="generate-btn"
+            on:click={generatePictures}
+            disabled={generating}
+          >
+            {#if generating}
+              <span class="loading-spinner-small"></span> Generating Images...
+            {:else}
+              ➕ Generate Images
+            {/if}
+          </button>
         </div>
-      {:else}
-        <div class="no-images">No images available for this story yet.</div>
-      {/if}
-
-      <!-- Show search results for generated images -->
-      {#if searchResults.length > 0 && selectedPicture}
-        <div class="search-results-section">
-          <h3>
-            Generated Images for: {selectedPicture.caption || story.title}
-          </h3>
-          <div class="search-results-scroll">
-            {#each searchResults as result, idx}
-              <div class="search-result-card">
-                <img src={result.image.thumbnailLink} alt={result.title} />
-                <div class="result-info">
-                  <h4>{result.title}</h4>
-                  <p>{result.snippet}</p>
-                  <div class="result-actions">
-                    <a
-                      class="view-original-btn"
-                      href={result.link}
-                      target="_blank">View Original</a
-                    >
-                    <button
-                      class="set-cover-btn"
-                      on:click={() => setAsCover(result.link, idx)}
-                      disabled={settingCover === idx}
-                    >
-                      {#if settingCover === idx}
-                        <span class="loading-spinner-small"></span> Setting Cover...
-                      {:else}
-                        Set as Cover
-                      {/if}
-                    </button>
-                  </div>
-                  {#if cardErrors[idx]}
-                    <div class="card-error">
-                      <span>{cardErrors[idx]}</span>
-                      <button
-                        class="clear-error-btn"
-                        on:click={() => {
-                          cardErrors[idx] = "";
-                          cardErrors = { ...cardErrors };
-                        }}>✖</button
-                      >
-                    </div>
+        {#if picturesLoading}
+          <div class="loading">Loading images...</div>
+        {:else if pictures.length > 0}
+          <div class="pictures-grid">
+            {#each pictures as picture, i (picture.id)}
+              <div class="picture-card">
+                <img
+                  src={picture.image_url}
+                  alt={picture.caption || story.title}
+                />
+                {#if picture.cover}
+                  <span class="cover-badge">Cover</span>
+                {/if}
+                <button
+                  class="delete-picture-btn"
+                  title="Delete image"
+                  on:click={() => deletePicture(picture.id)}
+                  disabled={deletingPicture[picture.id]}
+                >
+                  {#if deletingPicture[picture.id]}
+                    <span class="loading-spinner-small"></span>
+                  {:else}
+                    🗑️
                   {/if}
-                </div>
+                </button>
+                <button
+                  class="generate-images-btn"
+                  on:click={() =>
+                    generateImages(picture, picture.caption || story.title)}
+                  disabled={generatingImages}
+                >
+                  {#if generatingImages && selectedPicture?.id === picture.id}
+                    <span class="loading-spinner-small"></span> Generating...
+                  {:else}
+                    🎨 Generate
+                  {/if}
+                </button>
+                <button
+                  class="set-cover-btn"
+                  on:click={async () =>
+                    await API.put(`/pictures/${picture.id}`, {
+                      cover: !picture.cover,
+                    })}
+                  disabled={settingCover === i || picture.cover}
+                  style="margin: 0.5rem;"
+                >
+                  {#if settingCover === i}
+                    <span class="loading-spinner-small"></span> Setting Cover...
+                  {:else if picture.cover}
+                    Cover
+                  {:else}
+                    Set as Cover
+                  {/if}
+                </button>
+                {#if cardErrors[i]}
+                  <div class="card-error">
+                    <span>{cardErrors[i]}</span>
+                    <button
+                      class="clear-error-btn"
+                      on:click={() => {
+                        cardErrors[i] = "";
+                        cardErrors = { ...cardErrors };
+                      }}>✖</button
+                    >
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
-        </div>
-      {/if}
-      {#if picturesError}
-        <div class="error-message">{picturesError}</div>
-      {/if}
-    </div>
+        {:else}
+          <div class="no-images">No images available for this story yet.</div>
+        {/if}
+
+        <!-- Show search results for generated images -->
+        {#if searchResults.length > 0 && selectedPicture}
+          <div class="search-results-section">
+            <h3>
+              Generated Images for: {selectedPicture.caption || story.title}
+            </h3>
+            <div class="search-results-scroll">
+              {#each searchResults as result, idx}
+                <div class="search-result-card">
+                  <img src={result.image.thumbnailLink} alt={result.title} />
+                  <div class="result-info">
+                    <h4>{result.title}</h4>
+                    <p>{result.snippet}</p>
+                    <div class="result-actions">
+                      <a
+                        class="view-original-btn"
+                        href={result.link}
+                        target="_blank">View Original</a
+                      >
+                      <button
+                        class="set-cover-btn"
+                        on:click={() => setAsCover(result.link, idx)}
+                        disabled={settingCover === idx}
+                      >
+                        {#if settingCover === idx}
+                          <span class="loading-spinner-small"></span> Setting Cover...
+                        {:else}
+                          Set as Cover
+                        {/if}
+                      </button>
+                    </div>
+                    {#if cardErrors[idx]}
+                      <div class="card-error">
+                        <span>{cardErrors[idx]}</span>
+                        <button
+                          class="clear-error-btn"
+                          on:click={() => {
+                            cardErrors[idx] = "";
+                            cardErrors = { ...cardErrors };
+                          }}>✖</button
+                        >
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+        {#if picturesError}
+          <div class="error-message">{picturesError}</div>
+        {/if}
+      </div>
+    {/if}
     <div class="story-tabs">
       <button
         class="tab-btn {bulletTab === 'bullet' ? 'active' : ''}"
@@ -623,20 +718,23 @@
             {#each story.bullet_points as bp}
               <li class="bullet-point">
                 {bp.body}
-                <button
-                  class="delete-bullet-btn"
-                  title="Delete bullet point"
-                  on:click={() => deleteBulletPoint(bp.id)}
-                  disabled={deletingBullet[bp.id]}
-                >
-                  {#if deletingBullet[bp.id]}
-                    <span class="loading-spinner-small"></span>
-                  {:else}
-                    🗑️
+                {#if $user && $user.admin}
+                  <button
+                    class="delete-bullet-btn"
+                    title="Delete bullet point"
+                    on:click={() => deleteBulletPoint(bp.id)}
+                    disabled={deletingBullet[bp.id]}
+                  >
+                    {#if deletingBullet[bp.id]}
+                      <span class="loading-spinner-small"></span>
+                    {:else}
+                      🗑️
+                    {/if}
+                  </button>
+                  {#if deleteBulletError[bp.id]}
+                    <span class="error-message">{deleteBulletError[bp.id]}</span
+                    >
                   {/if}
-                </button>
-                {#if deleteBulletError[bp.id]}
-                  <span class="error-message">{deleteBulletError[bp.id]}</span>
                 {/if}
               </li>
             {/each}
@@ -646,7 +744,45 @@
         {/if}
       {:else}
         <div class="story-body">
-          {@html story.body}
+          {#if $user && $user.admin}
+            {#if editingBody}
+              <Tiptap bind:content={newBody} editable={true} />
+              <button
+                class="save-title-btn"
+                on:click={saveStoryBody}
+                disabled={savingBody}
+              >
+                {#if savingBody}
+                  <span class="loading-spinner-small"></span> Saving...
+                {:else}
+                  Save
+                {/if}
+              </button>
+              <button
+                class="cancel-title-btn"
+                on:click={() => {
+                  editingBody = false;
+                }}
+                disabled={savingBody}>Cancel</button
+              >
+              {#if saveBodyError}
+                <div class="error-message">{saveBodyError}</div>
+              {/if}
+            {:else}
+              <div
+                on:click={() => {
+                  editingBody = true;
+                  newBody = story.body || "";
+                }}
+                style="cursor:pointer;"
+              >
+                {@html story.body}
+                <span class="edit-icon">✏️</span>
+              </div>
+            {/if}
+          {:else}
+            {@html story.body}
+          {/if}
         </div>
       {/if}
     </div>
@@ -1171,8 +1307,36 @@
   }
 
   .bullet-point {
-    display: flex;
+    /* display: flex; */
     align-items: center;
     justify-content: space-between;
+  }
+
+  .save-title-btn,
+  .cancel-title-btn {
+    margin-left: 0.5em;
+    background: #2d6d62;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 0.3em 0.8em;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .cancel-title-btn {
+    background: #888;
+  }
+  .save-title-btn:disabled,
+  .cancel-title-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  .edit-icon {
+    font-size: 0.9em;
+    margin-left: 0.3em;
+    color: #888;
+    cursor: pointer;
   }
 </style>

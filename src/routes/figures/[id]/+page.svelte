@@ -3,6 +3,7 @@
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import API from "$lib/api/api.js";
+  import { user } from "$lib/stores/user";
 
   interface Figure {
     id: number;
@@ -322,34 +323,36 @@
   {:else if error}
     <div class="error">{error}</div>
   {:else if figure}
-    <div class="figure-blurbs-bar">
-      <button
-        class="generate-blurbs-btn"
-        on:click={generateBlurbs}
-        disabled={blurbsLoading}
-      >
-        {#if blurbsLoading}
-          <span class="loading-spinner-small"></span> Generating Blurbs...
-        {:else}
-          💡 Generate Fact Blurbs
+    {#if $user && $user.admin}
+      <div class="figure-blurbs-bar">
+        <button
+          class="generate-blurbs-btn"
+          on:click={generateBlurbs}
+          disabled={blurbsLoading}
+        >
+          {#if blurbsLoading}
+            <span class="loading-spinner-small"></span> Generating Blurbs...
+          {:else}
+            💡 Generate Fact Blurbs
+          {/if}
+        </button>
+        {#if blurbsError}
+          <span class="blurbs-error">{blurbsError}</span>
         {/if}
-      </button>
-      {#if blurbsError}
-        <span class="blurbs-error">{blurbsError}</span>
-      {/if}
-      {#if blurbs && blurbs.length > 0}
-        <div class="blurbs-list">
-          {#each blurbs as blurb}
-            <span
-              class="blurb-pill {blurb.starred ? 'starred' : ''}"
-              title={blurb.description}
-            >
-              {blurb.title}
-            </span>
-          {/each}
-        </div>
-      {/if}
-    </div>
+        {#if blurbs && blurbs.length > 0}
+          <div class="blurbs-list">
+            {#each blurbs as blurb}
+              <span
+                class="blurb-pill {blurb.starred ? 'starred' : ''}"
+                title={blurb.description}
+              >
+                {blurb.title}
+              </span>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
     <!-- Image Header -->
     <div class="figure-header">
       <div class="header-image">
@@ -367,36 +370,38 @@
 
     <div class="figure-content">
       <div class="figure-details">
-        <div class="figure-meta">
-          <div class="meta-item">
-            <span class="meta-label">Figure ID:</span>
-            <span class="meta-value">{figure.id}</span>
-          </div>
-          <div class="meta-item">
-            <span class="meta-label">Sport ID:</span>
-            <span class="meta-value">{figure.sport_id}</span>
-          </div>
-          {#if figure.position}
+        {#if $user && $user.admin}
+          <div class="figure-meta">
             <div class="meta-item">
-              <span class="meta-label">Position:</span>
-              <span class="meta-value">{figure.position}</span>
+              <span class="meta-label">Figure ID:</span>
+              <span class="meta-value">{figure.id}</span>
             </div>
-          {/if}
-          <div class="meta-item">
-            <span class="meta-label">Created:</span>
-            <span class="meta-value"
-              >{new Date(figure.created_at).toLocaleDateString()}</span
-            >
-          </div>
-          {#if figure.updated_at}
             <div class="meta-item">
-              <span class="meta-label">Updated:</span>
+              <span class="meta-label">Sport ID:</span>
+              <span class="meta-value">{figure.sport_id}</span>
+            </div>
+            {#if figure.position}
+              <div class="meta-item">
+                <span class="meta-label">Position:</span>
+                <span class="meta-value">{figure.position}</span>
+              </div>
+            {/if}
+            <div class="meta-item">
+              <span class="meta-label">Created:</span>
               <span class="meta-value"
-                >{new Date(figure.updated_at).toLocaleDateString()}</span
+                >{new Date(figure.created_at).toLocaleDateString()}</span
               >
             </div>
-          {/if}
-        </div>
+            {#if figure.updated_at}
+              <div class="meta-item">
+                <span class="meta-label">Updated:</span>
+                <span class="meta-value"
+                  >{new Date(figure.updated_at).toLocaleDateString()}</span
+                >
+              </div>
+            {/if}
+          </div>
+        {/if}
 
         {#if figure.summary}
           <div class="figure-summary">
@@ -406,132 +411,134 @@
         {/if}
 
         <!-- Generate Images Button -->
-        <div class="action-section">
-          <button
-            class="generate-btn"
-            on:click={generateImages}
-            disabled={generatingImages}
-          >
-            {#if generatingImages}
-              <span class="loading-spinner"></span>
-              Generating Images...
-            {:else}
-              🔍 Generate Images
-            {/if}
-          </button>
-        </div>
+        {#if $user && $user.admin}
+          <div class="action-section">
+            <button
+              class="generate-btn"
+              on:click={generateImages}
+              disabled={generatingImages}
+            >
+              {#if generatingImages}
+                <span class="loading-spinner"></span>
+                Generating Images...
+              {:else}
+                🔍 Generate Images
+              {/if}
+            </button>
+          </div>
 
-        <!-- Search Results -->
-        {#if searchResults.length > 0}
-          <div class="search-results-section">
-            <h2>Generated Images for "{figure.title}"</h2>
-            <div class="search-results-grid">
-              {#each searchResults as result, index}
-                <div class="search-result-card">
-                  <img
-                    src={result.image.thumbnailLink}
-                    alt={result.title}
-                    on:error={(e) =>
-                      ((e.target as HTMLImageElement).style.display = "none")}
-                  />
-                  <div class="result-info">
-                    <h3>{result.title}</h3>
-                    <p>{result.snippet}</p>
-                    {#if cardErrors[index]}
-                      <div class="card-error">
-                        <span class="error-message">{cardErrors[index]}</span>
-                        <button
-                          class="clear-error-btn"
-                          on:click={() => {
-                            cardErrors[index] = "";
-                            cardErrors = { ...cardErrors };
-                          }}
+          <!-- Search Results -->
+          {#if searchResults.length > 0}
+            <div class="search-results-section">
+              <h2>Generated Images for "{figure.title}"</h2>
+              <div class="search-results-grid">
+                {#each searchResults as result, index}
+                  <div class="search-result-card">
+                    <img
+                      src={result.image.thumbnailLink}
+                      alt={result.title}
+                      on:error={(e) =>
+                        ((e.target as HTMLImageElement).style.display = "none")}
+                    />
+                    <div class="result-info">
+                      <h3>{result.title}</h3>
+                      <p>{result.snippet}</p>
+                      {#if cardErrors[index]}
+                        <div class="card-error">
+                          <span class="error-message">{cardErrors[index]}</span>
+                          <button
+                            class="clear-error-btn"
+                            on:click={() => {
+                              cardErrors[index] = "";
+                              cardErrors = { ...cardErrors };
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      {/if}
+                      <div class="result-actions">
+                        <a
+                          href={result.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="view-original-btn"
                         >
-                          ✕
+                          View Original
+                        </a>
+                        <button
+                          class="set-cover-btn"
+                          on:click={() => setAsCover(result.link, index)}
+                          disabled={settingCover === index}
+                        >
+                          {#if settingCover === index}
+                            <span class="loading-spinner-small"></span>
+                            Setting Cover...
+                          {:else}
+                            🖼️ Set Cover
+                          {/if}
                         </button>
                       </div>
-                    {/if}
-                    <div class="result-actions">
-                      <a
-                        href={result.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="view-original-btn"
-                      >
-                        View Original
-                      </a>
-                      <button
-                        class="set-cover-btn"
-                        on:click={() => setAsCover(result.link, index)}
-                        disabled={settingCover === index}
-                      >
-                        {#if settingCover === index}
-                          <span class="loading-spinner-small"></span>
-                          Setting Cover...
-                        {:else}
-                          🖼️ Set Cover
-                        {/if}
-                      </button>
                     </div>
                   </div>
-                </div>
-              {/each}
+                {/each}
+              </div>
             </div>
-          </div>
-        {/if}
+          {/if}
 
-        <!-- Pictures Gallery -->
-        {#if figure.pictures && figure.pictures.length > 0}
-          <div class="pictures-section">
-            <h2>Pictures</h2>
-            <div class="pictures-grid">
-              {#each figure.pictures as picture}
-                <div class="picture-card">
-                  <div
-                    class="move-btn"
-                    on:mousedown={startMove}
-                    on:touchstart={startMove}
-                    title="Move image"
-                  >
-                    <i class="fa-solid fa-up-down"></i>
-                  </div>
-                  <div
-                    class="image-container"
-                    style="overflow:hidden; height:300px; position:relative;"
-                  >
-                    <img
-                      src={picture.image_url}
-                      alt={picture.caption || figure.title}
-                      draggable="false"
-                      style="transform: translateY({imageOffset}px); transition: {moveMode
-                        ? 'none'
-                        : 'transform 0.2s'};"
-                    />
-                  </div>
-                  {#if picture.caption}
-                    <div class="picture-caption">
-                      <p>{picture.caption}</p>
+          <!-- Pictures Gallery -->
+          {#if figure.pictures && figure.pictures.length > 0}
+            <div class="pictures-section">
+              <h2>Pictures</h2>
+              <div class="pictures-grid">
+                {#each figure.pictures as picture}
+                  <div class="picture-card">
+                    <div
+                      class="move-btn"
+                      on:mousedown={startMove}
+                      on:touchstart={startMove}
+                      title="Move image"
+                    >
+                      <i class="fa-solid fa-up-down"></i>
                     </div>
-                  {/if}
-                  {#if picture.cover}
-                    <div class="cover-badge">Cover</div>
-                  {/if}
-                  <button
-                    class="delete-picture-btn"
-                    on:click={() => deletePicture(picture.id)}
-                    disabled={deletingPicture === picture.id}
-                    title="Delete picture"
-                  >
-                    {#if deletingPicture === picture.id}
-                      <span class="loading-spinner-small"></span>
-                    {:else}
-                      🗑️
+                    <div
+                      class="image-container"
+                      style="overflow:hidden; height:300px; position:relative;"
+                    >
+                      <img
+                        src={picture.image_url}
+                        alt={picture.caption || figure.title}
+                        draggable="false"
+                        style="transform: translateY({imageOffset}px); transition: {moveMode
+                          ? 'none'
+                          : 'transform 0.2s'};"
+                      />
+                    </div>
+                    {#if picture.caption}
+                      <div class="picture-caption">
+                        <p>{picture.caption}</p>
+                      </div>
                     {/if}
-                  </button>
-                </div>
-              {/each}
+                    {#if picture.cover}
+                      <div class="cover-badge">Cover</div>
+                    {/if}
+                    <button
+                      class="delete-picture-btn"
+                      on:click={() => deletePicture(picture.id)}
+                      disabled={deletingPicture === picture.id}
+                      title="Delete picture"
+                    >
+                      {#if deletingPicture === picture.id}
+                        <span class="loading-spinner-small"></span>
+                      {:else}
+                        🗑️
+                      {/if}
+                    </button>
+                  </div>
+                {/each}
+              </div>
             </div>
-          </div>
+          {/if}
         {/if}
       </div>
     </div>

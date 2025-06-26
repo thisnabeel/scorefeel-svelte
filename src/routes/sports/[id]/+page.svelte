@@ -5,6 +5,7 @@
   import API from "$lib/api/api.js";
   import Page from "$lib/components/Pages/Page.svelte";
   import { user } from "$lib/stores/user";
+  import { get } from "svelte/store";
 
   interface Sport {
     id: number;
@@ -503,6 +504,60 @@
 
   let selectedPage: Page | null = null;
   let promptInput: string = "";
+
+  let storyPrompt = "";
+  let generatingStory = false;
+  let generateStoryError = "";
+
+  async function handleGenerateStory() {
+    if (!sport || !storyPrompt) return;
+    generatingStory = true;
+    generateStoryError = "";
+    try {
+      const response = await API.post(`/sports/${sport.id}/generate/story`, {
+        prompt: storyPrompt,
+      });
+      if (response && response.story) {
+        stories = [response.story, ...stories];
+        storyPrompt = "";
+      }
+    } catch (err) {
+      generateStoryError = "Failed to generate story.";
+      console.error(err);
+    } finally {
+      generatingStory = false;
+    }
+  }
+
+  let editingStoryTitle: Record<number, boolean> = {};
+  let newStoryTitle: Record<number, string> = {};
+  let savingStoryTitle: Record<number, boolean> = {};
+  let saveStoryTitleError: Record<number, string> = {};
+
+  async function saveStoryTitle(storyId: number) {
+    savingStoryTitle[storyId] = true;
+    saveStoryTitleError[storyId] = "";
+    try {
+      const story = stories.find((s) => s.id === storyId);
+      if (!story) return;
+      const response = await API.put(`/stories/${storyId}`, {
+        title: newStoryTitle[storyId],
+      });
+      if (response && response.title) {
+        stories = stories.map((s) =>
+          s.id === storyId ? { ...s, title: response.title } : s
+        );
+        editingStoryTitle[storyId] = false;
+      }
+    } catch (err) {
+      saveStoryTitleError[storyId] = "Failed to save title.";
+      console.error(err);
+    } finally {
+      savingStoryTitle[storyId] = false;
+      savingStoryTitle = { ...savingStoryTitle };
+      saveStoryTitleError = { ...saveStoryTitleError };
+    }
+  }
 </script>
 
 <svelte:head>
@@ -526,7 +581,7 @@
           >{"<-"} {sport?.title} Home</span
         >
       {/if}
-      {#each sport?.pages || [] as page (page.id)}
+      {#each sport?.pages ?? [] as page (page.id)}
         <span
           class="page-pill{selectedPage && selectedPage.id === page.id
             ? ' active'
@@ -564,9 +619,10 @@
       <div class="error">{error}</div>
     {:else if sport}
       <div class="sport-content">
-        <div class="sport-header">
-          <div class="sport-meta">
-            {#if events.length > 0}
+        {#if events.length > 0}
+          <div class="sport-header section">
+            <h3>Upcoming Events</h3>
+            <div class="sport-meta">
               {#each events as event}
                 {@const countdown = countdowns[event.id]}
                 <span class="meta-item">
@@ -577,6 +633,7 @@
                   <p>
                     {new Date(event.start_date).toLocaleDateString()}
                     {#if event.end_date}
+                      {"-"}
                       <i class="fa-solid fa-calendar-days"></i>
                       {new Date(event.end_date).toLocaleDateString()}
                     {/if}
@@ -591,9 +648,9 @@
                   </div>
                 </span>
               {/each}
-            {/if}
+            </div>
           </div>
-        </div>
+        {/if}
         {#if $user}
           <!-- Replace Generate Events Button with Event Form -->
           <div class="action-section">
@@ -640,6 +697,35 @@
         <div class="sport-sections">
           <div class="section">
             <h3>Latest Stories</h3>
+            {#if $user?.admin}
+              <form
+                class="mini-story-form"
+                on:submit|preventDefault={handleGenerateStory}
+                style="margin-bottom:1rem;display:flex;gap:0.5rem;align-items:center;"
+              >
+                <input
+                  type="text"
+                  placeholder="Prompt for new story..."
+                  bind:value={storyPrompt}
+                  style="flex:1;"
+                  required
+                />
+                <button
+                  type="submit"
+                  class="generate-btn"
+                  disabled={generatingStory}
+                >
+                  {#if generatingStory}
+                    <span class="loading-spinner-small"></span> Generating...
+                  {:else}
+                    ➕ Generate Story
+                  {/if}
+                </button>
+              </form>
+              {#if generateStoryError}
+                <div class="error-message">{generateStoryError}</div>
+              {/if}
+            {/if}
             {#if storiesLoading}
               <div class="loading">Loading stories...</div>
             {:else if stories.length > 0}
@@ -660,7 +746,51 @@
                       />
                     </div>
                     <div class="card-content">
-                      <h4 class="story-title">{story.title}</h4>
+                      {#if $user?.admin}
+                        {#if editingStoryTitle[story.id]}
+                          <input
+                            type="text"
+                            bind:value={newStoryTitle[story.id]}
+                            style="font-size:1.1rem;font-weight:600;"
+                          />
+                          <button
+                            class="save-title-btn"
+                            on:click|stopPropagation={() =>
+                              saveStoryTitle(story.id)}
+                            disabled={savingStoryTitle[story.id]}
+                          >
+                            {#if savingStoryTitle[story.id]}
+                              <span class="loading-spinner-small"></span> Saving...
+                            {:else}
+                              Save
+                            {/if}
+                          </button>
+                          <button
+                            class="cancel-title-btn"
+                            on:click|stopPropagation={() => {
+                              editingStoryTitle[story.id] = false;
+                            }}
+                            disabled={savingStoryTitle[story.id]}>Cancel</button
+                          >
+                          {#if saveStoryTitleError[story.id]}
+                            <div class="error-message">
+                              {saveStoryTitleError[story.id]}
+                            </div>
+                          {/if}
+                        {:else}
+                          <h4
+                            class="story-title"
+                            on:click|stopPropagation={() => {
+                              editingStoryTitle[story.id] = true;
+                              newStoryTitle[story.id] = story.title;
+                            }}
+                          >
+                            {story.title} <span class="edit-icon">✏️</span>
+                          </h4>
+                        {/if}
+                      {:else}
+                        <h4 class="story-title">{story.title}</h4>
+                      {/if}
                       {#if story.summary}
                         <p class="story-summary">{story.summary}</p>
                       {/if}
@@ -1446,5 +1576,56 @@
     font-weight: bold;
     box-shadow: 0 2px 8px rgba(45, 109, 98, 0.1);
     border: 2px solid #2d6d62;
+  }
+
+  .mini-story-form input[type="text"] {
+    padding: 0.5em 1em;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 1rem;
+  }
+  .mini-story-form .generate-btn {
+    background: #2d6d62;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6em 1.2em;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    transition: background 0.2s;
+  }
+  .mini-story-form .generate-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .save-title-btn,
+  .cancel-title-btn {
+    margin-left: 0.5em;
+    background: #2d6d62;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 0.3em 0.8em;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .cancel-title-btn {
+    background: #888;
+  }
+  .save-title-btn:disabled,
+  .cancel-title-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  .edit-icon {
+    font-size: 0.9em;
+    margin-left: 0.3em;
+    color: #888;
+    cursor: pointer;
   }
 </style>

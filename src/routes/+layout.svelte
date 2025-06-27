@@ -701,6 +701,7 @@
     margin-left: 280px; /* Same as sidebar width */
     padding: 2rem;
     transition: margin-left 0.3s ease-in-out;
+    margin-top: 1em;
   }
 
   .mobile-header {
@@ -790,6 +791,7 @@
     }
 
     .main-content {
+      margin-top: 1em;
       margin-left: 0;
       padding: 60px 1rem 1rem;
     }

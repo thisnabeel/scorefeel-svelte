@@ -791,7 +791,7 @@
     }
 
     .main-content {
-      margin-top: 4rem;
+      margin-top: 3rem;
       margin-left: 0;
       padding: 60px 1rem 1rem;
     }

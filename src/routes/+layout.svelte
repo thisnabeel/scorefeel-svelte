@@ -356,6 +356,7 @@
       <span class="bar"></span>
       <span class="bar"></span>
     </button>
+
     <div
       class="mobile-logo"
       on:click={() => {
@@ -719,25 +720,28 @@
   }
 
   .mobile-logo {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     font-size: 1.5rem;
     font-weight: bold;
-    color: #e53935; /* IGN-like red */
+    color: #e53935;
     cursor: pointer;
     max-width: 160px;
-    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
+    z-index: 2;
+    pointer-events: auto;
+  }
+
+  .hamburger-btn {
+    z-index: 3;
   }
 
   .join-btn-mobile {
-    background-color: #333;
-    color: #fff;
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    text-decoration: none;
-    font-weight: bold;
-    font-size: 0.9rem;
+    z-index: 3;
   }
 
   .sidebar-overlay {

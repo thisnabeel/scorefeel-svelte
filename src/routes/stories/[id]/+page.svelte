@@ -24,7 +24,8 @@
     };
   }
 
-  $: ({ story, error } = data);
+  $: ({ story: storyData, error } = data);
+  $: story = storyData;
 
   let pictures: Picture[] = [];
   let generating = false;
@@ -79,6 +80,32 @@
   let newBody = "";
   let savingBody = false;
   let saveBodyError = "";
+
+  let blurbsLoading = false;
+  let blurbsError = "";
+
+  // Reactive statement to ensure blurbs are tracked
+  $: storyBlurbs = story?.blurbs || [];
+
+  // Blurb editing state
+  let editingBlurb: number | null = null;
+  let editingBlurbTitle = "";
+  let editingBlurbDescription = "";
+  let savingBlurb = false;
+  let saveBlurbError = "";
+  let deletingBlurb: number | null = null;
+  let deleteBlurbError = "";
+  let starringBlurb: number | null = null;
+  let starBlurbError = "";
+
+  interface Blurb {
+    id: number;
+    title: string;
+    description: string;
+    starred: boolean;
+    blurbable_type: string;
+    blurbable_id: number;
+  }
 
   function formatDate(dateString: string) {
     if (!dateString) return "";
@@ -397,6 +424,128 @@
     }
   }
 
+  async function generateBlurbs() {
+    if (!story) return;
+    blurbsLoading = true;
+    blurbsError = "";
+    try {
+      const result = await API.post(`/stories/${story.id}/generate_blurbs`);
+      console.log("result", result);
+      // Update the story object with new blurbs
+      story = {
+        ...story,
+        blurbs: [...(story.blurbs || []), ...result.blurbs],
+      };
+    } catch (err) {
+      blurbsError = "Failed to generate blurbs.";
+      console.error("Failed to generate blurbs:", err);
+    } finally {
+      blurbsLoading = false;
+    }
+  }
+
+  function startEditBlurb(blurb: Blurb) {
+    editingBlurb = blurb.id;
+    editingBlurbTitle = blurb.title;
+    editingBlurbDescription = blurb.description;
+    saveBlurbError = "";
+  }
+
+  function cancelEditBlurb() {
+    editingBlurb = null;
+    editingBlurbTitle = "";
+    editingBlurbDescription = "";
+    saveBlurbError = "";
+  }
+
+  async function saveBlurb() {
+    if (!editingBlurb) return;
+    savingBlurb = true;
+    saveBlurbError = "";
+    try {
+      const response = await API.put(`/blurbs/${editingBlurb}`, {
+        title: editingBlurbTitle,
+        description: editingBlurbDescription,
+      });
+
+      // Update the blurb in the story
+      if (story && story.blurbs) {
+        story = {
+          ...story,
+          blurbs: story.blurbs.map((blurb: Blurb) =>
+            blurb.id === editingBlurb
+              ? {
+                  ...blurb,
+                  title: response.title,
+                  description: response.description,
+                }
+              : blurb
+          ),
+        };
+      }
+
+      editingBlurb = null;
+    } catch (err) {
+      saveBlurbError = "Failed to save blurb.";
+      console.error("Failed to save blurb:", err);
+    } finally {
+      savingBlurb = false;
+    }
+  }
+
+  async function toggleStarBlurb(blurbId: number) {
+    if (!story) return;
+    starringBlurb = blurbId;
+    starBlurbError = "";
+    try {
+      const blurb = story.blurbs?.find((b: Blurb) => b.id === blurbId);
+      if (!blurb) return;
+
+      const response = await API.put(`/blurbs/${blurbId}`, {
+        starred: !blurb.starred,
+      });
+
+      // Update the blurb in the story
+      if (story.blurbs) {
+        story = {
+          ...story,
+          blurbs: story.blurbs.map((b: Blurb) =>
+            b.id === blurbId ? { ...b, starred: response.starred } : b
+          ),
+        };
+      }
+    } catch (err) {
+      starBlurbError = "Failed to toggle star.";
+      console.error("Failed to toggle star:", err);
+    } finally {
+      starringBlurb = null;
+    }
+  }
+
+  async function deleteBlurb(blurbId: number) {
+    if (!story) return;
+    if (!confirm("Are you sure you want to delete this blurb?")) return;
+
+    deletingBlurb = blurbId;
+    deleteBlurbError = "";
+    try {
+      await API.delete(`/blurbs/${blurbId}`);
+
+      // Remove the blurb from the story
+      if (story.blurbs) {
+        story = {
+          ...story,
+          blurbs: story.blurbs.filter((b: Blurb) => b.id !== blurbId),
+        };
+      }
+    } catch (err) {
+      deleteBlurbError = "Failed to delete blurb.";
+      console.error("Failed to delete blurb:", err);
+    } finally {
+      deletingBlurb = null;
+    }
+  }
+
   onMount(() => {
     if (story) {
       loadPictures();
@@ -500,6 +649,107 @@
         <div class="error-message">{bulletPointsError}</div>
       {/if}
     {/if}
+    <div class="story-blurbs-bar">
+      {#if $user && $user.admin}
+        <button
+          class="generate-blurbs-btn"
+          on:click={generateBlurbs}
+          disabled={blurbsLoading}
+        >
+          {#if blurbsLoading}
+            <span class="loading-spinner-small"></span> Generating Blurbs...
+          {:else}
+            💡 Generate Fact Blurbs
+          {/if}
+        </button>
+      {/if}
+      {#if blurbsError}
+        <span class="blurbs-error">{blurbsError}</span>
+      {/if}
+      {#if storyBlurbs && storyBlurbs.length > 0}
+        <div class="blurbs-list">
+          {#each storyBlurbs as blurb}
+            {#if editingBlurb === blurb.id}
+              <div class="blurb-edit-container">
+                <input
+                  type="text"
+                  bind:value={editingBlurbTitle}
+                  class="blurb-edit-title"
+                  placeholder="Blurb title"
+                />
+                <textarea
+                  bind:value={editingBlurbDescription}
+                  class="blurb-edit-description"
+                  placeholder="Blurb description"
+                ></textarea>
+                <div class="blurb-edit-actions">
+                  <button
+                    class="blurb-save-btn"
+                    on:click={saveBlurb}
+                    disabled={savingBlurb}
+                  >
+                    {#if savingBlurb}
+                      <span class="loading-spinner-small"></span> Saving...
+                    {:else}
+                      💾 Save
+                    {/if}
+                  </button>
+                  <button
+                    class="blurb-cancel-btn"
+                    on:click={cancelEditBlurb}
+                    disabled={savingBlurb}
+                  >
+                    ❌ Cancel
+                  </button>
+                  <button
+                    class="blurb-star-btn {blurb.starred ? 'starred' : ''}"
+                    on:click={() => toggleStarBlurb(blurb.id)}
+                    disabled={starringBlurb === blurb.id}
+                  >
+                    {#if starringBlurb === blurb.id}
+                      <span class="loading-spinner-small"></span>
+                    {:else if blurb.starred}
+                      ⭐
+                    {:else}
+                      ☆
+                    {/if}
+                  </button>
+                  <button
+                    class="blurb-delete-btn"
+                    on:click={() => deleteBlurb(blurb.id)}
+                    disabled={deletingBlurb === blurb.id}
+                  >
+                    {#if deletingBlurb === blurb.id}
+                      <span class="loading-spinner-small"></span>
+                    {:else}
+                      🗑️
+                    {/if}
+                  </button>
+                </div>
+                {#if saveBlurbError}
+                  <div class="blurb-error">{saveBlurbError}</div>
+                {/if}
+              </div>
+            {:else}
+              <span
+                class="blurb-pill {blurb.starred ? 'starred' : ''}"
+                title={blurb.description}
+                on:click={() => $user && $user.admin && startEditBlurb(blurb)}
+                style="cursor: {$user && $user.admin ? 'pointer' : 'default'};"
+              >
+                {blurb.title}
+              </span>
+            {/if}
+          {/each}
+        </div>
+        {#if starBlurbError}
+          <div class="blurb-error">{starBlurbError}</div>
+        {/if}
+        {#if deleteBlurbError}
+          <div class="blurb-error">{deleteBlurbError}</div>
+        {/if}
+      {/if}
+    </div>
     <header class="story-header">
       {#if $user && $user.admin}
         {#if editingTitle}
@@ -548,7 +798,7 @@
       </p>
       <div class="story-image">
         <img
-          src={story.pictures?.find((p) => p.cover)?.image_url ||
+          src={story.pictures?.find((p: Picture) => p.cover)?.image_url ||
             `https://placehold.co/1200x600/1a1a1a/ffffff?text=${story.title.split(" ").join("+")}`}
           alt={story.title}
         />
@@ -1338,5 +1588,178 @@
     margin-left: 0.3em;
     color: #888;
     cursor: pointer;
+  }
+
+  .story-blurbs-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .generate-blurbs-btn {
+    background: #2d6d62;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6em 1.2em;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    transition: background 0.2s;
+  }
+  .generate-blurbs-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  .blurbs-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .blurb-pill {
+    display: inline-block;
+    background: #f0f2f5;
+    color: #2d6d62;
+    border-radius: 999px;
+    padding: 0.4em 1em;
+    font-size: 0.98rem;
+    font-weight: 500;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    transition:
+      background 0.2s,
+      color 0.2s;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .blurb-pill.starred {
+    background: #ffe082;
+    color: #b55a23;
+    font-weight: bold;
+    border: 1px solid #ffd54f;
+  }
+  .blurbs-error {
+    color: #e53935;
+    font-size: 0.98rem;
+    margin-left: 1rem;
+  }
+
+  .blurb-edit-container {
+    background: #fff;
+    border: 2px solid #2d6d62;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .blurb-edit-title {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+
+  .blurb-edit-description {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    min-height: 60px;
+    resize: vertical;
+    font-family: inherit;
+  }
+
+  .blurb-edit-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .blurb-save-btn,
+  .blurb-cancel-btn,
+  .blurb-star-btn,
+  .blurb-delete-btn {
+    padding: 0.4rem 0.8rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .blurb-save-btn {
+    background: #2d6d62;
+    color: white;
+  }
+
+  .blurb-save-btn:hover:not(:disabled) {
+    background: #1e4d42;
+  }
+
+  .blurb-cancel-btn {
+    background: #6c757d;
+    color: white;
+  }
+
+  .blurb-cancel-btn:hover:not(:disabled) {
+    background: #5a6268;
+  }
+
+  .blurb-star-btn {
+    background: #f8f9fa;
+    color: #6c757d;
+    border: 1px solid #dee2e6;
+  }
+
+  .blurb-star-btn.starred {
+    background: #ffe082;
+    color: #b55a23;
+    border-color: #ffd54f;
+  }
+
+  .blurb-star-btn:hover:not(:disabled) {
+    background: #e9ecef;
+  }
+
+  .blurb-star-btn.starred:hover:not(:disabled) {
+    background: #ffd54f;
+  }
+
+  .blurb-delete-btn {
+    background: #dc3545;
+    color: white;
+  }
+
+  .blurb-delete-btn:hover:not(:disabled) {
+    background: #c82333;
+  }
+
+  .blurb-save-btn:disabled,
+  .blurb-cancel-btn:disabled,
+  .blurb-star-btn:disabled,
+  .blurb-delete-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .blurb-error {
+    color: #e53935;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: #ffebee;
+    border-radius: 4px;
+    border: 1px solid #e53935;
   }
 </style>

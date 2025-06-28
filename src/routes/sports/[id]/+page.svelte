@@ -6,6 +6,7 @@
   import Page from "$lib/components/Pages/Page.svelte";
   import { user } from "$lib/stores/user";
   import { get } from "svelte/store";
+  import EventCard from "$lib/components/EventCard.svelte";
 
   export let slug: string;
 
@@ -55,11 +56,20 @@
     id: number;
     title: string;
     start_date: string;
-    eventable_type: string;
-    eventable_id: number;
+    end_date?: string;
+    duration_days?: number;
+    is_multi_day?: boolean;
     created_at: string;
     updated_at: string;
-    end_date?: string;
+    eventable?: {
+      id: number;
+      title: string;
+      position: number;
+      created_at: string;
+      updated_at: string;
+    };
+    tags?: any[];
+    events?: Event[];
   }
 
   interface Page {
@@ -91,6 +101,7 @@
   let pagesLoading = false;
   let creatingPage = false;
   let createPageError = "";
+  let selectedParentEventId: number | null = null;
 
   // Cover image states
   let storyCoverImages: Record<number, string> = {};
@@ -262,13 +273,21 @@
       return;
     }
     try {
-      await API.post("/events", {
+      const res = await API.post("/events", {
         title: newEventTitle,
-        eventable_type: "Sport",
-        eventable_id: sport.id,
+        eventable_type: selectedParentEventId ? "Event" : "Sport",
+        eventable_id: selectedParentEventId ? selectedParentEventId : sport.id,
         start_date: newEventDate,
         end_date: newEventEndDate || undefined,
       });
+
+      if (selectedParentEventId) {
+        const parentEvent = events.find((e) => e.id === selectedParentEventId);
+        if (parentEvent) {
+          parentEvent.events = [res.event, ...(parentEvent.events || [])];
+        }
+      }
+
       newEventTitle = "";
       newEventDate = "";
       newEventEndDate = "";
@@ -626,30 +645,8 @@
           <div class="sport-header section">
             <h3>Upcoming Events</h3>
             <div class="sport-meta">
-              {#each events as event}
-                {@const countdown = countdowns[event.id]}
-                <span class="meta-item">
-                  <strong>
-                    {event.title}
-                  </strong>
-                  <i class="fa-solid fa-calendar-days"></i>
-                  <p>
-                    {new Date(event.start_date).toLocaleDateString()}
-                    {#if event.end_date}
-                      {"-"}
-                      <i class="fa-solid fa-calendar-days"></i>
-                      {new Date(event.end_date).toLocaleDateString()}
-                    {/if}
-                  </p>
-                  <div class="countdown">
-                    <span class="countdown-value">
-                      {#if countdown}
-                        {countdown.days}d {countdown.hours}h {countdown.minutes}m
-                        {countdown.seconds}s
-                      {/if}
-                    </span>
-                  </div>
-                </span>
+              {#each events as event (event.id)}
+                <EventCard {event} {selectedParentEventId} />
               {/each}
             </div>
           </div>
@@ -925,6 +922,28 @@
               <p>No sport rules available yet for {sport.title}.</p>
             {/if}
           </div>
+
+          <div class="section">
+            <h3>Events</h3>
+            {#if eventsLoading}
+              <div class="loading">Loading events...</div>
+            {:else if events.length > 0}
+              <div class="events-grid">
+                {#each events as event (event.id)}
+                  <EventCard
+                    {event}
+                    {countdowns}
+                    user={$user}
+                    {deletingEvent}
+                    {deleteEventError}
+                    {deleteEvent}
+                  />
+                {/each}
+              </div>
+            {:else}
+              <p>No events available yet for {sport.title}.</p>
+            {/if}
+          </div>
         </div>
       </div>
     {:else}
@@ -950,6 +969,23 @@
     color: white;
     padding: 2rem;
     position: relative;
+  }
+
+  .sport-meta .meta-item {
+    position: relative;
+  }
+
+  .selected.meta-item {
+    background-color: #c8ff85;
+  }
+
+  .event-hook {
+    position: absolute;
+    top: -4px;
+    right: 1px;
+    z-index: 99999;
+    width: 10px;
+    cursor: pointer;
   }
 
   .back-btn {
@@ -1630,5 +1666,90 @@
     margin-left: 0.3em;
     color: #888;
     cursor: pointer;
+  }
+
+  .child-events {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .child-events h5 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    opacity: 0.9;
+  }
+
+  .child-events-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .child-event-item {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 0.75rem;
+    border-left: 3px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .child-event-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.25rem;
+  }
+
+  .child-event-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .child-event-date {
+    font-size: 0.8rem;
+    opacity: 0.8;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .child-event-meta {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .child-event-duration {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+  }
+
+  .event-actions {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .delete-event-btn {
+    background: rgba(220, 53, 69, 0.8);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .delete-event-btn:hover:not(:disabled) {
+    background: rgba(220, 53, 69, 1);
+  }
+
+  .delete-event-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>

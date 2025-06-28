@@ -50,7 +50,7 @@
     if (title.includes("football") || title.includes("soccer")) return "⚽";
 
     // Basketball
-    if (title.includes("basketball")) return "🏀";
+    if (title.includes("basketball") || title.includes("nba")) return "🏀";
 
     // Baseball
     if (title.includes("baseball")) return "⚾";

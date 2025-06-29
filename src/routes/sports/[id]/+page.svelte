@@ -580,6 +580,8 @@
       saveStoryTitleError = { ...saveStoryTitleError };
     }
   }
+
+  let visiblePagesCount = 3;
 </script>
 
 <svelte:head>
@@ -603,7 +605,7 @@
           >{"<-"} {sport?.title} Home</span
         >
       {/if}
-      {#each sport?.pages ?? [] as page (page.id)}
+      {#each (sport?.pages ?? []).slice(0, visiblePagesCount) as page (page.id)}
         <span
           class="page-pill{selectedPage && selectedPage.id === page.id
             ? ' active'
@@ -611,6 +613,14 @@
           on:click={() => (selectedPage = page)}>{(page as Page).title}</span
         >
       {/each}
+      {#if (sport?.pages?.length ?? 0) > visiblePagesCount}
+        <button
+          class="more-pages-btn"
+          on:click={() => (visiblePagesCount += 3)}
+        >
+          More...
+        </button>
+      {/if}
       {#if $user}
         <button
           class="page-pill add-pill"
@@ -1751,5 +1761,19 @@
   .delete-event-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .more-pages-btn {
+    background: #e0e0e0;
+    border: none;
+    border-radius: 6px;
+    padding: 0.4em 1.2em;
+    margin-left: 0.5em;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .more-pages-btn:hover {
+    background: #bdbdbd;
   }
 </style>

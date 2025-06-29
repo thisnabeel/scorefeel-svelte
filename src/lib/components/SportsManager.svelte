@@ -173,6 +173,27 @@
     <div class="sports-list">
       {#each sports as sport (sport.id)}
         <div class="sport-card">
+          <button
+            class="toggle-public-btn"
+            title={sport.public ? "Set Private" : "Set Public"}
+            on:click={async (e) => {
+              e.stopPropagation();
+              try {
+                const updated = await API.put(`/sports/${sport.id}`, {
+                  public: !sport.public,
+                });
+                sports = sports.map((s) =>
+                  s.id === sport.id ? { ...s, public: updated.public } : s
+                );
+              } catch (err) {
+                error = "Failed to toggle public status";
+                console.error(err);
+              }
+            }}
+          >
+            <i class={sport.public ? "fa fa-toggle-on" : "fa fa-toggle-off"}
+            ></i>
+          </button>
           <h4>{sport.title}</h4>
           <p><strong>Parent Sport ID:</strong> {sport.sport_id || "None"}</p>
           <p><strong>Position:</strong> {sport.position || "Not set"}</p>
@@ -311,6 +332,7 @@
   }
 
   .sport-card {
+    position: relative;
     border: 1px solid #ddd;
     border-radius: 8px;
     padding: 20px;
@@ -330,5 +352,26 @@
 
   .card-actions {
     margin-top: 15px;
+  }
+
+  .toggle-public-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.6rem;
+    color: #28a745;
+    z-index: 2;
+    transition: color 0.2s;
+  }
+
+  .toggle-public-btn .fa-toggle-off {
+    color: #aaa;
+  }
+
+  .toggle-public-btn .fa-toggle-on {
+    color: #28a745;
   }
 </style>

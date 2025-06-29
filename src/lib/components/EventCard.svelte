@@ -1,5 +1,6 @@
 <script lang="ts">
   import EventCard from "./EventCard.svelte";
+  import { goto } from "$app/navigation";
   export let event: any;
   export let countdowns: Record<number, any> = {};
   export let user: any = null;
@@ -43,7 +44,16 @@
     ></i>
   {/if}
   <strong>
-    {event.title}
+    {#if event.id}
+      <a
+        href="#"
+        on:click|preventDefault={() => goto(`/events/${event.id}`)}
+        style="color:inherit;text-decoration:underline;cursor:pointer;"
+        >{event.title}</a
+      >
+    {:else}
+      {event.title}
+    {/if}
   </strong>
   <i class="fa-solid fa-calendar-days"></i>
   <p>

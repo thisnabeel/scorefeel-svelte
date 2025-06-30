@@ -262,6 +262,10 @@
     }
   }
 
+  function selectParentEventId(id: number) {
+    selectedParentEventId = id;
+  }
+
   async function createEvent() {
     if (!sport || !newEventTitle || !newEventDate) return;
     creatingEvent = true;
@@ -272,6 +276,7 @@
       creatingEvent = false;
       return;
     }
+
     try {
       const res = await API.post("/events", {
         title: newEventTitle,
@@ -656,7 +661,12 @@
             <h3>Upcoming Events</h3>
             <div class="sport-meta">
               {#each events as event (event.id)}
-                <EventCard {event} {selectedParentEventId} />
+                <EventCard
+                  {event}
+                  {selectedParentEventId}
+                  {selectParentEventId}
+                  {deleteEvent}
+                />
               {/each}
             </div>
           </div>
@@ -1056,8 +1066,23 @@
 
   .sport-meta {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 1rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: #e53935 #f8f9fa;
+  }
+  .sport-meta::-webkit-scrollbar {
+    height: 8px;
+  }
+  .sport-meta::-webkit-scrollbar-thumb {
+    background: #e53935;
+    border-radius: 4px;
+  }
+  .sport-meta::-webkit-scrollbar-track {
+    background: #f8f9fa;
   }
 
   .meta-item {

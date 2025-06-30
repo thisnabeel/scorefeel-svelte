@@ -1,12 +1,14 @@
 <script lang="ts">
   import EventCard from "./EventCard.svelte";
   import { goto } from "$app/navigation";
+  import { user } from "$lib/stores/user";
   export let event: any;
   export let countdowns: Record<number, any> = {};
-  export let user: any = null;
+
   export let deletingEvent: Record<number, boolean> = {};
   export let deleteEventError: Record<number, string> = {};
   export let deleteEvent: (id: number) => void = () => {};
+  export let selectParentEventId: (id: number) => void = () => {};
   export let selectedParentEventId: number | null = null;
   export let parent: any = null;
   // For child events, pass down all props except event
@@ -33,14 +35,14 @@
   class:child={parent}
   class:not-child={!parent}
 >
-  {#if user?.admin}
+  {#if $user && $user.admin}
     <i
       class="fa fa-circle event-hook"
       on:click={() => {
-        selectedParentEventId
-          ? (selectedParentEventId = null)
-          : (selectedParentEventId = event.id);
+        selectParentEventId(event.id);
       }}
+    ></i>
+    <i class="fa fa-trash event-destroy" on:click={() => deleteEvent(event.id)}
     ></i>
   {/if}
   <strong>
@@ -120,9 +122,24 @@
   }
   .sport-meta {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 1rem;
-    margin-bottom: 0.5rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: #e53935 #f8f9fa;
+  }
+  .sport-meta.child {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 1rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: #e53935 #f8f9fa;
   }
   .meta-item {
     background-color: #f8f9fa;
@@ -151,6 +168,17 @@
     z-index: 99999;
     width: 10px;
     cursor: pointer;
+    color: #eee;
+  }
+
+  .event-destroy {
+    position: absolute;
+    top: -4px;
+    right: -14px;
+    z-index: 99999;
+    width: 10px;
+    cursor: pointer;
+    color: #eee;
   }
 
   .countdown {
@@ -198,6 +226,7 @@
   }
 
   .child {
+    display: inline-block;
     border: 6px solid #eee;
   }
 
@@ -212,5 +241,19 @@
     .child {
       display: inline-block;
     }
+  }
+
+  .sport-meta::-webkit-scrollbar,
+  .sport-meta.child::-webkit-scrollbar {
+    height: 8px;
+  }
+  .sport-meta::-webkit-scrollbar-thumb,
+  .sport-meta.child::-webkit-scrollbar-thumb {
+    background: #e53935;
+    border-radius: 4px;
+  }
+  .sport-meta::-webkit-scrollbar-track,
+  .sport-meta.child::-webkit-scrollbar-track {
+    background: #f8f9fa;
   }
 </style>
